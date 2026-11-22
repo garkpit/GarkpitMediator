@@ -1,0 +1,95 @@
+{
+  "name": "@garkpit/mediator",
+  "version": "0.2.0",
+  "description": "A small, zero-dependency CQRS mediator for TypeScript web apps: Commands, Queries and a pipeline of behaviors.",
+  "license": "MIT",
+  "author": "garkpit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/garkpit/GarkpitMediator.git"
+  },
+  "private": true,
+  "type": "module",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./redactSecrets": {
+      "types": "./src/redactSecrets.ts",
+      "default": "./src/redactSecrets.ts"
+    },
+    "./HasAuditInfo": {
+      "types": "./src/HasAuditInfo.ts",
+      "default": "./src/HasAuditInfo.ts"
+    },
+    "./HasMutexKey": {
+      "types": "./src/HasMutexKey.ts",
+      "default": "./src/HasMutexKey.ts"
+    },
+    "./Request": {
+      "types": "./src/Request.ts",
+      "default": "./src/Request.ts"
+    },
+    "./Mediator": {
+      "types": "./src/Mediator.ts",
+      "default": "./src/Mediator.ts"
+    },
+    "./RequestContext": {
+      "types": "./src/RequestContext.ts",
+      "default": "./src/RequestContext.ts"
+    },
+    "./log-types": {
+      "types": "./src/log-types.ts",
+      "default": "./src/log-types.ts"
+    },
+    "./PipelineBehavior": {
+      "types": "./src/PipelineBehavior.ts",
+      "default": "./src/PipelineBehavior.ts"
+    },
+    "./Handler": {
+      "types": "./src/Handler.ts",
+      "default": "./src/Handler.ts"
+    },
+    "./audit-types": {
+      "types": "./src/audit-types.ts",
+      "default": "./src/audit-types.ts"
+    },
+    "./MutexHeldError": {
+      "types": "./src/MutexHeldError.ts",
+      "default": "./src/MutexHeldError.ts"
+    },
+    "./behaviors/MutexBehavior": {
+      "types": "./src/behaviors/MutexBehavior.ts",
+      "default": "./src/behaviors/MutexBehavior.ts"
+    },
+    "./behaviors/AuditBehavior": {
+      "types": "./src/behaviors/AuditBehavior.ts",
+      "default": "./src/behaviors/AuditBehavior.ts"
+    },
+    "./behaviors/LoggingBehavior": {
+      "types": "./src/behaviors/LoggingBehavior.ts",
+      "default": "./src/behaviors/LoggingBehavior.ts"
+    },
+    "./http": {
+      "types": "./src/http.ts",
+      "default": "./src/http.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "bun-types": "^1.3.1",
+    "@types/node": "^25.9.1"
+  }
+}
