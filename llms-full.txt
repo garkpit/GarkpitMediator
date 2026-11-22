@@ -1362,16 +1362,16 @@ Nothing above needs a special "AI mode". These parts of the ordinary API are wha
 
 ## Aires: the companion library
 
-Everything on this page you can build yourself, and the example app does it in a few hundred lines. We
-also use a fuller version of the same idea: **Aires**, our in-house companion library for apps built on
-this mediator. It generates both doors from an app's Commands and Queries: an in-app chat assistant in
-which every change is a proposal a person confirms, and an MCP endpoint for outside agents, with a
-check that fails when a feature has no matching tool.
+Everything on this page you can build yourself, and the example app does it in a few hundred lines. I
+also use a fuller version of the same idea: **Aires**, a companion library I developed at work. It
+generates both doors from an app’s Commands and Queries: an in-app chat assistant in which every change
+is a proposal a person confirms, and an MCP endpoint for outside agents, with a check that fails when a
+feature has no matching tool.
 
-Aires is not yet public. Until it is, the pattern on this page and the code in
-[`examples/notes`](../examples/notes/README.md) are the way to get the same shape in your own app, and
-an app built this way will be ready for Aires without restructuring, because the hard part (every
-capability as a named, typed request) is already done.
+A free, open-source version is in the wings for when I get the chance. But you could simply describe it
+to Claude Code and have it write one for you. That’s what I did. Opus 5.5 is that good. This page and
+the code in [`examples/notes`](../examples/notes/README.md) give you (and Claude) the whole shape to
+start from.
 
 ## Where next
 
