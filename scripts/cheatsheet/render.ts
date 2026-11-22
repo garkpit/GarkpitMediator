@@ -51,7 +51,7 @@ body { padding: var(--space-4) clamp(1rem, 3vw, 3rem) var(--space-5); }
 .card h2 { font-size: var(--step-1); line-height: 1.2; max-width: none; margin-bottom: var(--space-2); color: var(--accent-text); }
 .card p, .card li, .card dd { font-size: var(--step--1); line-height: 1.5; max-width: none; }
 .card .intro { color: var(--muted); margin-bottom: var(--space-2); }
-.card pre { background: var(--surface); border-radius: var(--radius-1); padding: var(--space-2); overflow-x: auto; font-size: 0.78rem; line-height: 1.55; margin-bottom: var(--space-2); }
+.card pre { background: var(--surface); border-radius: var(--radius-1); padding: var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.78rem; line-height: 1.55; margin-bottom: var(--space-2); }
 .card pre code { background: none; padding: 0; font-size: inherit; }
 .card dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.45rem var(--space-2); }
 .card dt code { white-space: nowrap; font-weight: 600; }
@@ -76,7 +76,7 @@ body { padding: var(--space-4) clamp(1rem, 3vw, 3rem) var(--space-5); }
   /* Rows of three for paper: a multi-column block will not start part-way down a printed page. */
   .cards { columns: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4mm; align-items: start; }
   .card { box-shadow: none; border: 0.3mm solid var(--line); padding: 3mm; margin-bottom: 0; }
-  .card pre { font-size: 6.2pt; white-space: pre-wrap; }
+  .card pre { font-size: 6.2pt; }
   .lead .card { margin-bottom: 4mm; }
   .sheet-head { margin-bottom: 3mm; }
   .sheet-head h1 { font-size: 15pt; }
