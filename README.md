@@ -9,6 +9,8 @@ The result is an app that stays easy to find your way around as it grows, for pe
 agents alike. And because everything the app can do is already a list of named, typed requests, that
 list can be handed to a chat assistant or an MCP server as tools.
 
+**Website and full docs: https://garkpit.github.io/GarkpitMediator/**
+
 Zero runtime dependencies. Source-only TypeScript. Runs on [Bun](https://bun.sh) and on any bundler
 that compiles TypeScript. MIT licence.
 
