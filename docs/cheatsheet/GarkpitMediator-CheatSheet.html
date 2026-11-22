@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en-GB" data-direction="clay" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GarkpitMediator cheat sheet</title>
+<meta name="description" content="A zero-dependency CQRS mediator for TypeScript. Every feature is a named Command or Query with one handler, sent through one pipeline of behaviors.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20x%3D%221%22%20y%3D%221%22%20width%3D%2230%22%20height%3D%2230%22%20rx%3D%229%22%20fill%3D%22%23f1dfd5%22%2F%3E%3Crect%20x%3D%226.5%22%20y%3D%226.5%22%20width%3D%2219%22%20height%3D%2219%22%20rx%3D%226%22%20fill%3D%22%23e3b29d%22%2F%3E%3Crect%20x%3D%2211.5%22%20y%3D%2211.5%22%20width%3D%229%22%20height%3D%229%22%20rx%3D%223%22%20fill%3D%22%23b5502b%22%2F%3E%3C%2Fsvg%3E">
+<script data-page-kit="head">(function(d){var r=d.documentElement;try{var m=(location.hash+location.search).match(/theme=(light|dark)/);var s=m?m[1]:localStorage.getItem("page-kit-theme");if(s==="light"||s==="dark")r.setAttribute("data-theme",s)}catch(e){}if(!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)){r.classList.add("pk-motion");setTimeout(function(){if(!window.pageKit)r.classList.remove("pk-motion")},2500)}})(document);</script>
+<style data-page-kit="tokens">/* page-kit tokens: clay (generated from src/directions/clay.ts; do not edit) */
+:root {
+  --font-display: "Avenir Next", Avenir, Seravek, system-ui, sans-serif;
+  --font-body: Seravek, "Avenir Next", system-ui, sans-serif;
+  --font-label: "Avenir Next", Avenir, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --step--2: 0.78rem;
+  --step--1: 0.9rem;
+  --step-0: clamp(1.0625rem, 0.3vw + 0.95rem, 1.1875rem);
+  --step-1: clamp(1.2rem, 0.4vw + 1rem, 1.375rem);
+  --step-2: clamp(1.5rem, 1vw + 1.1rem, 2rem);
+  --step-3: clamp(2.1rem, 2.2vw + 1rem, 3.3rem);
+  --step-4: clamp(2.8rem, 3.6vw + 1rem, 4.75rem);
+  --display-size: clamp(3.8rem, 7.6vw, 10rem);
+  --weight-display: 600;
+  --weight-heading: 600;
+  --weight-body: 400;
+  --weight-strong: 600;
+  --leading-display: 0.98;
+  --leading-heading: 1.1;
+  --leading-body: 1.6;
+  --tracking-display: -0.035em;
+  --tracking-heading: -0.02em;
+  --tracking-label: 0.06em;
+  --measure: 60ch;
+  --gutter: clamp(1rem, 1.6vw, 2rem);
+  --margin: clamp(1.25rem, 5vw, 6.5rem);
+  --section-space: clamp(3.5rem, 6vw, 7rem);
+  --space-1: 0.375rem;
+  --space-2: 0.75rem;
+  --space-3: 1.25rem;
+  --space-4: 2rem;
+  --space-5: 3.25rem;
+  --space-6: 5rem;
+  --radius-1: 10px;
+  --radius-2: 18px;
+  --radius-3: 30px;
+  --shadow-1: 0 1px 1px color-mix(in oklab, var(--shadow-tint) 10%, transparent), 0 6px 16px -4px color-mix(in oklab, var(--shadow-tint) 16%, transparent);
+  --shadow-2: 0 2px 3px color-mix(in oklab, var(--shadow-tint) 9%, transparent), 0 24px 52px -16px color-mix(in oklab, var(--shadow-tint) 32%, transparent);
+  --rule: 1px;
+  --ease: cubic-bezier(.3, 1.25, .55, 1);
+  --dur: 0.8s;
+  --dur-long: 1.2s;
+  --stagger: 0.08s;
+  --distance: 22px;
+  --fold: calc(var(--pk-vh, 1vh) * 100);
+  color-scheme: light;
+}
+:root {
+  --surface: #f3ece2;
+  --pk-surface: #f3ece2;
+  --surface-alt: #fcf8f3;
+  --pk-surface-alt: #fcf8f3;
+  --text: #2a1f19;
+  --pk-text: #2a1f19;
+  --muted: #69584b;
+  --pk-muted: #69584b;
+  --line: #e0d3c2;
+  --pk-line: #e0d3c2;
+  --accent: #b5502b;
+  --pk-accent: #b5502b;
+  --accent-text: #9e431f;
+  --pk-accent-text: #9e431f;
+  --on-accent: #fff8f2;
+  --pk-on-accent: #fff8f2;
+  --accent-2: #5f7a52;
+  --pk-accent-2: #5f7a52;
+  --inverse: #2f241e;
+  --pk-inverse: #2f241e;
+  --on-inverse: #f6ece0;
+  --pk-on-inverse: #f6ece0;
+  --pk-inverse-muted: #c4b2a1;
+  --pk-inverse-accent: #f0a07c;
+  --positive: #3b6a31;
+  --pk-positive: #3b6a31;
+  --negative: #a5361c;
+  --pk-negative: #a5361c;
+  --shadow-tint: #6b3b1f;
+  --pk-shadow-tint: #6b3b1f;
+  --pk-inverse-positive: #93c785;
+  --pk-inverse-negative: #f29a7d;
+}
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: #1e1814;
+    --pk-surface: #1e1814;
+    --surface-alt: #2a221d;
+    --pk-surface-alt: #2a221d;
+    --text: #f2e8dc;
+    --pk-text: #f2e8dc;
+    --muted: #bba996;
+    --pk-muted: #bba996;
+    --line: #40352c;
+    --pk-line: #40352c;
+    --accent: #e3895f;
+    --pk-accent: #e3895f;
+    --accent-text: #ec9c76;
+    --pk-accent-text: #ec9c76;
+    --on-accent: #24140b;
+    --pk-on-accent: #24140b;
+    --accent-2: #9fbd8c;
+    --pk-accent-2: #9fbd8c;
+    --inverse: #f2e8dc;
+    --pk-inverse: #f2e8dc;
+    --on-inverse: #2a1f19;
+    --pk-on-inverse: #2a1f19;
+    --pk-inverse-muted: #69584b;
+    --pk-inverse-accent: #9e431f;
+    --positive: #93c785;
+    --pk-positive: #93c785;
+    --negative: #f29a7d;
+    --pk-negative: #f29a7d;
+    --shadow-tint: #000000;
+    --pk-shadow-tint: #000000;
+    --pk-inverse-positive: #3b6a31;
+    --pk-inverse-negative: #a5361c;
+}
+}
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1e1814;
+    --pk-surface: #1e1814;
+    --surface-alt: #2a221d;
+    --pk-surface-alt: #2a221d;
+    --text: #f2e8dc;
+    --pk-text: #f2e8dc;
+    --muted: #bba996;
+    --pk-muted: #bba996;
+    --line: #40352c;
+    --pk-line: #40352c;
+    --accent: #e3895f;
+    --pk-accent: #e3895f;
+    --accent-text: #ec9c76;
+    --pk-accent-text: #ec9c76;
+    --on-accent: #24140b;
+    --pk-on-accent: #24140b;
+    --accent-2: #9fbd8c;
+    --pk-accent-2: #9fbd8c;
+    --inverse: #f2e8dc;
+    --pk-inverse: #f2e8dc;
+    --on-inverse: #2a1f19;
+    --pk-on-inverse: #2a1f19;
+    --pk-inverse-muted: #69584b;
+    --pk-inverse-accent: #9e431f;
+    --positive: #93c785;
+    --pk-positive: #93c785;
+    --negative: #f29a7d;
+    --pk-negative: #f29a7d;
+    --shadow-tint: #000000;
+    --pk-shadow-tint: #000000;
+    --pk-inverse-positive: #3b6a31;
+    --pk-inverse-negative: #a5361c;
+}
+}
+:root[data-accent="sage"] {
+  --accent: #4d6b43;
+  --pk-accent: #4d6b43;
+  --accent-text: #46623d;
+  --pk-accent-text: #46623d;
+  --on-accent: #f7f3ea;
+  --pk-on-accent: #f7f3ea;
+  --pk-inverse-accent: #a9c79a;
+}
+@media screen and (prefers-color-scheme: dark) {
+  :root[data-accent="sage"]:not([data-theme="light"]) {
+    --accent: #9fbd8c;
+    --pk-accent: #9fbd8c;
+    --accent-text: #a9c79a;
+    --pk-accent-text: #a9c79a;
+    --on-accent: #15200f;
+    --pk-on-accent: #15200f;
+    --pk-inverse-accent: #46623d;
+}
+}
+@media screen {
+  :root[data-accent="sage"][data-theme="dark"] {
+    --accent: #9fbd8c;
+    --pk-accent: #9fbd8c;
+    --accent-text: #a9c79a;
+    --pk-accent-text: #a9c79a;
+    --on-accent: #15200f;
+    --pk-on-accent: #15200f;
+    --pk-inverse-accent: #46623d;
+}
+}
+[data-ground="surface"] {
+  --surface: var(--pk-surface); --surface-alt: var(--pk-surface-alt);
+  --text: var(--pk-text); --muted: var(--pk-muted); --line: var(--pk-line);
+  --accent: var(--pk-accent); --accent-text: var(--pk-accent-text); --on-accent: var(--pk-on-accent);
+  --positive: var(--pk-positive); --negative: var(--pk-negative);
+  background-color: var(--surface); color: var(--text);
+}
+[data-ground="alt"] {
+  --surface: var(--pk-surface-alt); --surface-alt: var(--pk-surface);
+  background-color: var(--surface); color: var(--text);
+}
+[data-ground="inverse"] {
+  --surface: var(--pk-inverse); --surface-alt: color-mix(in oklab, var(--pk-inverse) 90%, var(--pk-on-inverse));
+  --text: var(--pk-on-inverse); --muted: var(--pk-inverse-muted);
+  --line: color-mix(in oklab, var(--pk-on-inverse) 22%, var(--pk-inverse));
+  --accent: var(--pk-inverse-accent); --accent-text: var(--pk-inverse-accent); --on-accent: var(--pk-inverse);
+  --positive: var(--pk-inverse-positive); --negative: var(--pk-inverse-negative);
+  --inverse: var(--pk-surface); --on-inverse: var(--pk-text);
+  background-color: var(--surface); color: var(--text);
+}
+[data-ground="accent"] {
+  --surface: var(--pk-accent); --surface-alt: var(--pk-accent);
+  --text: var(--pk-on-accent); --muted: var(--pk-on-accent);
+  --line: color-mix(in oklab, var(--pk-on-accent) 40%, var(--pk-accent));
+  --accent: var(--pk-on-accent); --accent-text: var(--pk-on-accent); --on-accent: var(--pk-accent);
+  --positive: var(--pk-on-accent); --negative: var(--pk-on-accent);
+  background-color: var(--surface); color: var(--text);
+}
+</style>
+<style data-page-kit="base">/* @garkpit/page-kit base: the craft every direction shares. Colours and fonts come only from tokens. */
+
+/* ---------- reset and page ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  hanging-punctuation: first allow-end;
+  background-color: var(--surface);
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  font-weight: var(--weight-body);
+  line-height: var(--leading-body);
+  overflow-x: clip;
+}
+img, svg, video, canvas { display: block; max-width: 100%; }
+img { height: auto; }
+svg { overflow: visible; }
+:where(h1, h2, h3, h4, h5, h6, p, ul, ol, dl, dd, figure, blockquote, pre, table) { margin: 0; }
+:where(ul, ol) { padding: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+hr { border: 0; border-top: var(--rule) solid var(--line); margin: 0; }
+
+/* ---------- typography craft ---------- */
+:where(h1, h2, h3, h4, .display) {
+  font-family: var(--font-display);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-heading);
+  text-wrap: balance;
+}
+h1 { font-size: var(--step-4); }
+h2 { font-size: var(--step-3); }
+h3 { font-size: var(--step-2); }
+h4 { font-size: var(--step-1); }
+.display {
+  font-size: var(--display-size);
+  font-weight: var(--weight-display);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+}
+p, li, dd, figcaption, blockquote { text-wrap: pretty; }
+p { max-width: var(--measure); }
+p + p { margin-top: 1em; }
+strong, b { font-weight: var(--weight-strong); }
+small { font-size: var(--step--1); }
+.lede {
+  font-size: var(--step-1);
+  line-height: 1.45;
+  max-width: 46ch;
+  text-wrap: balance;
+}
+.kicker, .label, .byline, .tag, th, figcaption, .stat-label, .bar-label, .step-when, dt, .note {
+  font-family: var(--font-label);
+}
+.kicker, .label {
+  font-size: var(--step--2);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.kicker { color: var(--accent-text); margin-bottom: var(--space-2); flex-shrink: 0; max-width: 100%; }
+.byline { font-size: var(--step--1); color: var(--muted); letter-spacing: 0.01em; text-wrap: balance; }
+/* The runtime wraps each "a · b · c" item (with its trailing separator) in .pk-item, so a line
+   breaks between items, never inside one, and never starts with a separator. */
+.pk-item { display: inline-block; max-width: 100%; }
+.note { font-size: var(--step--1); color: var(--muted); line-height: 1.5; }
+.num, table, .stat-value, .bar-value, .step-when, time, .readout {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.88em; }
+code { padding: 0.08em 0.3em; background: color-mix(in oklab, var(--text) 7%, transparent); border-radius: var(--radius-1); }
+kbd {
+  padding: 0.1em 0.4em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-1);
+  font-size: 0.82em;
+}
+mark { background: color-mix(in oklab, var(--accent) 22%, var(--surface)); color: var(--text); padding: 0 0.12em; }
+::selection { background: color-mix(in oklab, var(--accent) 30%, var(--surface)); color: var(--text); }
+a {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: color-mix(in oklab, var(--accent-text) 70%, transparent);
+  transition: text-decoration-color 0.15s, color 0.15s;
+}
+a:hover { text-decoration-color: var(--accent-text); color: var(--accent-text); }
+:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; border-radius: var(--radius-1); }
+
+/* ---------- layout ---------- */
+.wrap { padding-inline: var(--margin); width: 100%; }
+.masthead { padding-block: var(--space-6) var(--space-5); position: relative; }
+main > section, .section { padding-block: var(--section-space); position: relative; }
+.section-head { margin-bottom: var(--space-5); }
+.section-head > * + * { margin-top: var(--space-2); }
+.grid, .split, .cols {
+  display: grid;
+  column-gap: var(--gutter);
+  row-gap: var(--space-4);
+}
+.grid { grid-template-columns: repeat(var(--grid-cols, 12), minmax(0, 1fr)); }
+.split { grid-template-columns: repeat(var(--grid-cols, 12), minmax(0, 1fr)); align-items: start; }
+.split > :first-child { grid-column: 1 / span var(--split-head, 3); }
+.split > :nth-child(2) { grid-column: calc(var(--split-head, 3) + 1 + var(--split-skip, 0)) / -1; }
+.split > :nth-child(n + 3) { grid-column: calc(var(--split-head, 3) + 1 + var(--split-skip, 0)) / -1; }
+.cols { grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); }
+.columns { columns: var(--column-count, 2) 22rem; column-gap: calc(var(--gutter) * 2); }
+.columns > * { break-inside: avoid-column; }
+.columns p { max-width: none; }
+.stack > * + * { margin-top: var(--space-3); }
+
+/* ---------- data ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--gutter);
+}
+.stat { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.stat-value {
+  font-family: var(--font-display);
+  font-size: var(--step-4);
+  font-weight: var(--weight-display);
+  line-height: 1;
+  letter-spacing: var(--tracking-display);
+}
+.stat-label { font-size: var(--step--1); color: var(--muted); line-height: 1.35; text-wrap: balance; }
+.stat-delta { font-family: var(--font-label); font-size: var(--step--1); font-variant-numeric: tabular-nums; }
+.stat-delta[data-change="good"] { color: var(--positive); }
+.stat-delta[data-change="bad"] { color: var(--negative); }
+.stat-delta[data-change="flat"] { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
+caption { caption-side: bottom; text-align: left; padding-top: var(--space-2); font-family: var(--font-label); font-size: var(--step--2); color: var(--muted); }
+th, td { padding: var(--space-2) var(--space-3) var(--space-2) 0; text-align: left; vertical-align: baseline; }
+th { font-size: var(--step--2); font-weight: 500; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--muted); }
+td { border-top: 1px solid var(--line); }
+th.num, td.num { text-align: right; }
+th:last-child, td:last-child { padding-right: 0; }
+tr.total td { border-top: var(--rule) solid var(--text); font-weight: var(--weight-strong); }
+.table-wrap { overflow-x: auto; }
+
+@property --pk-meter { syntax: "<number>"; inherits: true; initial-value: 1; }
+.bars { display: grid; gap: var(--space-2); }
+.bar {
+  --bar-fill: var(--text);
+  --bar-track: color-mix(in oklab, var(--text) 9%, transparent);
+  display: grid;
+  grid-template-columns: var(--bar-label-width, minmax(8rem, 14rem)) minmax(0, 1fr) var(--bar-value-width, 4.5rem);
+  align-items: center;
+  column-gap: var(--space-3);
+}
+.bar::before, .bar::after {
+  content: "";
+  grid-column: 2;
+  grid-row: 1;
+  height: var(--bar-height, 0.5rem);
+  border-radius: var(--bar-radius, 0);
+}
+.bar::before { background: var(--bar-track); }
+.bar::after {
+  justify-self: start;
+  width: calc(var(--value, 0) * var(--pk-meter) * 100%);
+  background: var(--bar-fill);
+}
+.bar[data-highlight] { --bar-fill: var(--accent); }
+.bar-label { grid-column: 1; grid-row: 1; font-size: var(--step--1); line-height: 1.3; min-width: 0; }
+.bar-value { grid-column: 3; grid-row: 1; text-align: right; font-size: var(--step--1); font-weight: var(--weight-strong); }
+.bar[data-series="2"] { --bar-fill: var(--accent-2); }
+
+ol.steps { list-style: none; display: grid; gap: var(--space-4); counter-reset: step; }
+ol.steps > li {
+  display: grid;
+  grid-template-columns: var(--step-when-width, 9rem) minmax(0, 1fr);
+  column-gap: var(--gutter);
+  counter-increment: step;
+}
+ol.steps > li > :not(.step-when) { grid-column: 2; }
+.step-when { grid-row: 1 / span 3; font-size: var(--step--1); color: var(--accent-text); padding-top: 0.2em; }
+ol.steps strong { display: block; font-family: var(--font-display); font-weight: var(--weight-heading); font-size: var(--step-1); line-height: 1.25; }
+ol.steps p { margin-top: var(--space-1); color: var(--muted); }
+
+dl.facts { display: grid; grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr); column-gap: var(--gutter); }
+dl.facts dt, dl.facts dd { padding-block: var(--space-2); border-top: 1px solid var(--line); margin: 0; }
+dl.facts dt { font-size: var(--step--1); color: var(--muted); }
+
+blockquote.pull { font-family: var(--font-display); font-size: var(--step-3); line-height: 1.12; letter-spacing: var(--tracking-heading); max-width: 24ch; text-wrap: pretty; }
+blockquote.pull cite { display: block; margin-top: var(--space-3); font-family: var(--font-label); font-size: var(--step--1); font-style: normal; letter-spacing: var(--tracking-label); color: var(--muted); }
+
+/* ---------- media ---------- */
+figure { display: grid; gap: var(--space-2); }
+figcaption { font-size: var(--step--1); color: var(--muted); line-height: 1.45; max-width: 60ch; }
+.frame { aspect-ratio: var(--ratio, 16 / 9); overflow: clip; position: relative; background: var(--surface-alt); }
+.frame > img, .frame > svg, .frame > video { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- actions and small parts ---------- */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.8em 1.4em;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-label);
+  font-size: var(--step--1);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s, background-color 0.15s, color 0.15s, box-shadow 0.2s;
+}
+.button:hover { color: var(--on-accent); background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
+.button:active { transform: translateY(1px); }
+.button[data-variant="quiet"] { background: transparent; color: var(--text); border-color: var(--line); }
+.button[data-variant="quiet"]:hover { border-color: var(--text); color: var(--text); }
+.actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.tag {
+  display: inline-block;
+  padding: 0.2em 0.6em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  font-size: var(--step--2);
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+footer.colophon { padding-block: var(--space-5) var(--space-6); font-size: var(--step--1); color: var(--muted); }
+footer.colophon p { max-width: 80ch; }
+[data-theme-toggle] {
+  display: inline-flex; align-items: center; gap: 0.45em;
+  padding: 0.35em 0.75em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: var(--step--2);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+[data-theme-toggle]:hover { color: var(--text); border-color: var(--text); }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- narrow screens: not the target, but never broken ---------- */
+@media (max-width: 900px) {
+  .split, .grid { grid-template-columns: minmax(0, 1fr); }
+  .split > *, .grid > * { grid-column: 1 / -1 !important; }
+  .cols { grid-template-columns: minmax(0, 1fr); }
+  ol.steps > li { grid-template-columns: minmax(0, 1fr); }
+  ol.steps > li > * { grid-column: 1 !important; grid-row: auto !important; }
+  .bar { grid-template-columns: minmax(0, 1fr) var(--bar-value-width, 4.5rem); row-gap: var(--space-1); }
+  .bar::before, .bar::after { grid-column: 1 / -1; grid-row: 2; }
+  .bar-label { grid-column: 1; }
+  .bar-value { grid-column: 2; }
+  dl.facts { grid-template-columns: minmax(0, 1fr); }
+  dl.facts dd { border-top: 0; padding-top: 0; }
+}
+
+/* ---------- print ---------- */
+@media print {
+  html, body { background: none; }
+  .masthead, main > section { break-inside: avoid-page; padding-block: 1.5rem; }
+  [data-theme-toggle], .no-print { display: none !important; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; color: var(--muted); }
+}
+
+/* Aliases so @garkpit/report-render's viewer bar picks up the direction's colours. */
+:root {
+  --rr-bg: var(--surface);
+  --rr-surface: var(--surface-alt);
+  --rr-ink: var(--text);
+  --rr-text: var(--text);
+  --rr-muted: var(--muted);
+  --rr-line: var(--line);
+  --rr-accent: var(--accent-text);
+  --rr-accent-soft: color-mix(in oklab, var(--accent) 14%, var(--surface));
+}
+</style>
+<style data-page-kit="direction">/* Clay: warm and tactile. Oat ground, raised rounded panels, Avenir Next and Seravek, warm two-layer shadows. */
+
+em, i { font-style: normal; font-weight: 600; }
+h1, h2, h3, h4, .display { font-weight: 600; }
+h2 { font-size: var(--step-3); line-height: 1.04; max-width: 20ch; }
+h3 { font-size: var(--step-1); letter-spacing: -0.012em; line-height: 1.25; }
+.kicker, .label { text-transform: none; letter-spacing: 0.01em; font-size: var(--step--1); font-weight: 600; }
+.kicker {
+  display: inline-block;
+  justify-self: start;
+  width: fit-content;
+  padding: 0.38em 0.9em;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 10%, var(--surface));
+  color: var(--accent-text);
+}
+.pill { display: inline-block; padding: 0.3em 0.8em; border-radius: 999px; background: color-mix(in oklab, var(--accent) 13%, var(--surface)); color: var(--accent-text); font-family: var(--font-label); font-size: var(--step--1); font-weight: 600; }
+.note { color: var(--muted); }
+
+/* ---------- panels: the building block ---------- */
+.panel {
+  background: var(--surface-alt);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-5);
+}
+
+/* the masthead is one big raised slab */
+.masthead { padding: var(--space-4) var(--margin) var(--space-5); }
+.masthead > .wrap {
+  --surface: var(--pk-surface-alt);
+  background: var(--surface);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-2);
+  padding: clamp(2rem, 4vw, 4.5rem) clamp(2rem, 5vw, 6rem) clamp(2.5rem, 4.5vw, 5rem);
+}
+.masthead > .wrap { position: relative; overflow: clip; }
+.masthead > .wrap::before, .masthead > .wrap::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+/* two pebbles of clay resting in the slab's corner, cut by its edge */
+.masthead > .wrap::before {
+  right: -7%;
+  bottom: -22%;
+  width: clamp(16rem, 30vw, 36rem);
+  aspect-ratio: 1;
+  background: color-mix(in oklab, var(--accent) 24%, var(--surface));
+  box-shadow: inset 0 -18px 40px color-mix(in oklab, var(--shadow-tint) 14%, transparent);
+}
+.masthead > .wrap::after {
+  right: calc(7% + clamp(11rem, 21vw, 25rem));
+  bottom: 9%;
+  width: clamp(5rem, 8vw, 9.5rem);
+  aspect-ratio: 1;
+  background: color-mix(in oklab, var(--accent-2) 30%, var(--surface));
+  box-shadow: var(--shadow-1), inset 0 -8px 18px color-mix(in oklab, var(--shadow-tint) 12%, transparent);
+}
+.masthead > .wrap > * { position: relative; z-index: 1; }
+.masthead .display { margin-top: clamp(2.5rem, 6vw, 6rem); max-width: 12ch; }
+.masthead .lede { margin-top: var(--space-4); color: var(--muted); font-size: var(--step-1); line-height: 1.5; max-width: 44ch; }
+.masthead .byline { margin-top: var(--space-4); color: var(--muted); }
+
+/* raised grounds become panels floating on the oat */
+main > section { padding-block: calc(var(--section-space) / 2); }
+main > section:not([data-ground]) { padding-block: var(--section-space); }
+main > section[data-ground="alt"], main > section[data-ground="inverse"], main > section[data-ground="accent"] {
+  background-color: var(--pk-surface);
+  padding-inline: var(--margin);
+}
+main > section[data-ground] > .wrap {
+  background: var(--surface);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-2);
+  padding: clamp(2rem, 4vw, 4.5rem);
+}
+.section-head { margin-bottom: var(--space-5); }
+.split { --split-head: 4; }
+.split h2 { font-size: var(--step-2); line-height: 1.12; letter-spacing: -0.022em; }
+.section-head .note { margin-top: var(--space-3); }
+
+/* ---------- the slab's big moment ---------- */
+section .display { font-size: clamp(5rem, 10vw, 12rem); letter-spacing: -0.045em; line-height: 0.92; color: var(--accent-text); }
+section .display + .lede { margin-top: var(--space-3); }
+.lede { color: var(--muted); }
+
+/* ---------- numbers: unequal, the first one leads ---------- */
+.stats { grid-template-columns: 1.5fr repeat(3, 1fr); gap: var(--space-4); align-items: end; }
+.stat-value { font-weight: 600; font-size: clamp(2.6rem, 4vw, 4.75rem); letter-spacing: -0.045em; line-height: 1; }
+.stat:first-child .stat-value { font-size: clamp(4rem, 7vw, 8.5rem); color: var(--accent-text); }
+.stat-label { font-family: var(--font-body); font-size: var(--step--1); color: var(--muted); max-width: 24ch; }
+.stat-delta {
+  align-self: start;
+  padding: 0.25em 0.75em;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--positive) 12%, var(--surface));
+  font-weight: 600;
+}
+.stat-delta[data-change="bad"] { background: color-mix(in oklab, var(--negative) 12%, var(--surface)); }
+
+/* ---------- timeline: a soft rail with round stops ---------- */
+ol.steps { position: relative; gap: var(--space-4); }
+ol.steps::before { content: ""; position: absolute; left: 0.6rem; top: 0.6rem; bottom: 0.6rem; width: 2px; border-radius: 2px; background: var(--line); }
+ol.steps > li { grid-template-columns: minmax(0, 1fr); padding-left: 2.75rem; position: relative; }
+ol.steps > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.15rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 4px solid var(--accent);
+  box-shadow: var(--shadow-1);
+}
+/* Same specificity as base's `> :not(.step-when) { grid-column: 2 }`, so this one-column override wins by order. */
+ol.steps > li > :not(.step-when), ol.steps > li > .step-when { grid-column: 1; }
+.step-when { grid-row: auto; color: var(--accent-text); font-weight: 600; padding: 0; margin-bottom: var(--space-1); }
+ol.steps strong { font-weight: 600; font-size: var(--step-1); letter-spacing: -0.015em; }
+
+/* ---------- bars: rounded, pressable ---------- */
+.bars { gap: var(--space-3); }
+.bar { --bar-height: 1.1rem; --bar-radius: 999px; --bar-fill: color-mix(in oklab, var(--text) 72%, var(--surface)); --bar-track: color-mix(in oklab, var(--text) 7%, transparent); }
+.bar[data-highlight] { --bar-fill: var(--accent); }
+.bar[data-highlight] .bar-label { color: var(--accent-text); font-weight: 600; }
+.bar-label { font-family: var(--font-body); font-size: var(--step-0); }
+
+/* ---------- table in a soft tray ---------- */
+.table-wrap { background: var(--surface-alt); border-radius: var(--radius-2); box-shadow: var(--shadow-1); padding: var(--space-2) var(--space-4); }
+main > section[data-ground] .table-wrap { background: var(--pk-surface); box-shadow: none; }
+table { font-size: var(--step-0); }
+th { text-transform: none; letter-spacing: 0.01em; font-size: var(--step--1); font-weight: 600; padding-top: var(--space-3); }
+td { font-family: var(--font-body); padding-block: 0.7rem; }
+tr:first-child td { border-top-color: var(--line); }
+tr.total td { border-top: 2px solid var(--text); }
+
+/* ---------- quote with a round mark ---------- */
+blockquote.pull { font-family: var(--font-display); font-weight: 600; font-size: var(--step-3); line-height: 1.1; letter-spacing: -0.03em; max-width: 22ch; }
+blockquote.pull::before {
+  content: "\201C";
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-bottom: var(--space-3);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 2.6rem;
+  line-height: 1;
+  padding-top: 0.35em;
+  box-shadow: var(--shadow-1);
+}
+blockquote.pull cite { letter-spacing: 0.01em; font-weight: 500; }
+
+/* ---------- figures sit in the panel with the inner radius ---------- */
+figure > svg, .soft-figure { background: var(--pk-surface); border-radius: var(--radius-2); padding: clamp(1rem, 2.5vw, 2.5rem); }
+figure > img, figure > .frame { border-radius: var(--radius-2); }
+figcaption { font-family: var(--font-body); }
+
+/* ---------- small parts ---------- */
+.button { border-radius: 999px; box-shadow: var(--shadow-1); font-size: var(--step-0); padding: 0.85em 1.6em; letter-spacing: 0; }
+.button:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
+.button[data-variant="quiet"] { background: var(--surface-alt); border-color: transparent; }
+.tag { border-radius: 999px; border: 0; background: color-mix(in oklab, var(--text) 8%, transparent); letter-spacing: 0.01em; }
+code, kbd { border-radius: var(--radius-1); }
+[data-theme-toggle] { border-radius: 999px; background: var(--surface); border-color: var(--line); padding: 0.45em 1em; letter-spacing: 0.01em; font-size: var(--step--1); font-weight: 600; }
+footer.colophon { color: var(--muted); }
+
+@media (max-width: 900px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .masthead > .wrap::before, .masthead > .wrap::after { display: none; }
+}
+</style>
+<style>
+body { padding: var(--space-4) clamp(1rem, 3vw, 3rem) var(--space-5); }
+.sheet-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.sheet-head h1 { font-size: var(--step-3); }
+.sheet-head p { color: var(--muted); max-width: 80ch; margin-top: var(--space-1); }
+.sheet-head nav { display: flex; gap: var(--space-2); align-items: center; }
+.lead { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--space-3); align-items: stretch; }
+.cards { columns: 3 26rem; column-gap: var(--space-3); }
+@media screen and (max-width: 900px) { .lead { grid-template-columns: minmax(0, 1fr); } }
+.card { break-inside: avoid; background: var(--surface-alt); border-radius: var(--radius-2); box-shadow: var(--shadow-1); padding: var(--space-3); margin-bottom: var(--space-3); }
+.card h2 { font-size: var(--step-1); line-height: 1.2; max-width: none; margin-bottom: var(--space-2); color: var(--accent-text); }
+.card p, .card li, .card dd { font-size: var(--step--1); line-height: 1.5; max-width: none; }
+.card .intro { color: var(--muted); margin-bottom: var(--space-2); }
+.card pre { background: var(--surface); border-radius: var(--radius-1); padding: var(--space-2); overflow-x: auto; font-size: 0.78rem; line-height: 1.55; margin-bottom: var(--space-2); }
+.card pre code { background: none; padding: 0; font-size: inherit; }
+.card dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.45rem var(--space-2); }
+.card dt code { white-space: nowrap; font-weight: 600; }
+.card dd { margin: 0; }
+.card ul { list-style: none; display: grid; gap: 0.45rem; }
+.card li { padding-left: 1em; position: relative; }
+.card li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 0.4em; height: 0.4em; border-radius: 50%; background: var(--accent); }
+.card ul:not(:first-child), .card dl + ul { margin-top: var(--space-2); }
+.more { color: var(--muted); font-size: var(--step--1); margin-top: var(--space-3); }
+.tk-c { color: var(--muted); font-style: italic; }
+.tk-s { color: var(--positive); }
+.tk-k { color: var(--accent-text); }
+.tk-n { color: color-mix(in oklab, var(--accent) 55%, var(--text)); }
+.tk-t { color: color-mix(in oklab, var(--accent-2) 70%, var(--text)); }
+.tk-f { font-weight: 600; }
+.tk-p { color: color-mix(in oklab, var(--text) 74%, var(--surface-alt)); }
+@page { size: A4 landscape; margin: 7mm; }
+@media print {
+  html { font-size: 7.5pt; }
+  body { padding: 0; }
+  .lead { gap: 4mm; }
+  /* Rows of three for paper: a multi-column block will not start part-way down a printed page. */
+  .cards { columns: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4mm; align-items: start; }
+  .card { box-shadow: none; border: 0.3mm solid var(--line); padding: 3mm; margin-bottom: 0; }
+  .card pre { font-size: 6.2pt; white-space: pre-wrap; }
+  .lead .card { margin-bottom: 4mm; }
+  .sheet-head { margin-bottom: 3mm; }
+  .sheet-head h1 { font-size: 15pt; }
+}
+</style>
+</head>
+<body>
+<header class="sheet-head">
+<div><h1>GarkpitMediator cheat sheet</h1><p><code>@garkpit/mediator</code> 0.2.0. A zero-dependency CQRS mediator for TypeScript. Every feature is a named Command or Query with one handler, sent through one pipeline of behaviors.</p></div>
+<nav class="no-print"><button type="button" data-theme-toggle></button></nav>
+</header>
+<div class="lead">
+<article class="card"><h2>Install: copy it in</h2><p class="intro">No npm package. Copy the source into your project and record the commit.</p><pre><code><span class="tk-f">git</span> clone https://github.com/garkpit/GarkpitMediator.git ../GarkpitMediator
+<span class="tk-f">mkdir</span><span class="tk-n"> -p</span> packages/mediator
+<span class="tk-f">git</span><span class="tk-n"> -C</span> ../GarkpitMediator archive HEAD src package.json tsconfig.json <span class="tk-p">\</span>
+  <span class="tk-f">LICENSE</span> README.md llms-full.txt <span class="tk-p">|</span> <span class="tk-f">tar</span><span class="tk-n"> -x</span><span class="tk-n"> -C</span> packages/mediator
+<span class="tk-c"># package.json: &quot;workspaces&quot;: [&quot;packages/*&quot;],</span>
+<span class="tk-c">#   &quot;dependencies&quot;: { &quot;@garkpit/mediator&quot;: &quot;workspace:*&quot; }</span>
+<span class="tk-f">bun</span> install</code></pre></article>
+<article class="card"><h2>The whole shape</h2><pre><code><span class="tk-k">import</span> <span class="tk-p">{</span> <span class="tk-t">Command</span><span class="tk-p">,</span> <span class="tk-t">Query</span><span class="tk-p">,</span> createMediator<span class="tk-p">,</span> <span class="tk-t">LoggingBehavior</span><span class="tk-p">,</span> <span class="tk-t">MutexBehavior</span> <span class="tk-p">}</span> <span class="tk-k">from</span> <span class="tk-s">'@garkpit/mediator'</span><span class="tk-p">;</span>
+
+<span class="tk-c">// A Query reads.</span>
+<span class="tk-k">class</span> <span class="tk-t">GetNote</span> <span class="tk-k">extends</span> <span class="tk-t">Query</span><span class="tk-p">&lt;</span><span class="tk-t">Note</span> <span class="tk-p">|</span> <span class="tk-n">undefined</span><span class="tk-p">&gt;</span> <span class="tk-p">{</span>
+  <span class="tk-k">constructor</span><span class="tk-p">(</span><span class="tk-k">readonly</span> id<span class="tk-p">:</span> <span class="tk-k">string</span><span class="tk-p">)</span> <span class="tk-p">{</span> <span class="tk-k">super</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">;</span> <span class="tk-p">}</span>
+<span class="tk-p">}</span>
+
+<span class="tk-c">// A Command changes something. Methods opt it in to the lock and the audit trail.</span>
+<span class="tk-k">class</span> <span class="tk-t">RenameNote</span> <span class="tk-k">extends</span> <span class="tk-t">Command</span><span class="tk-p">&lt;</span><span class="tk-t">Note</span><span class="tk-p">&gt;</span> <span class="tk-p">{</span>
+  <span class="tk-k">constructor</span><span class="tk-p">(</span><span class="tk-k">readonly</span> id<span class="tk-p">:</span> <span class="tk-k">string</span><span class="tk-p">,</span> <span class="tk-k">readonly</span> title<span class="tk-p">:</span> <span class="tk-k">string</span><span class="tk-p">)</span> <span class="tk-p">{</span> <span class="tk-k">super</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">;</span> <span class="tk-p">}</span>
+  <span class="tk-f">mutexKey</span><span class="tk-p">(</span><span class="tk-p">)</span> <span class="tk-p">{</span> <span class="tk-k">return</span> <span class="tk-s">`note:${</span><span class="tk-k">this</span><span class="tk-p">.</span>id<span class="tk-s">}`</span><span class="tk-p">;</span> <span class="tk-p">}</span>
+  <span class="tk-f">auditInfo</span><span class="tk-p">(</span><span class="tk-p">)</span> <span class="tk-p">{</span> <span class="tk-k">return</span> <span class="tk-p">{</span> action<span class="tk-p">:</span> <span class="tk-s">'note.rename'</span><span class="tk-p">,</span> resourceId<span class="tk-p">:</span> <span class="tk-k">this</span><span class="tk-p">.</span>id<span class="tk-p">,</span> details<span class="tk-p">:</span> <span class="tk-p">{</span> title<span class="tk-p">:</span> <span class="tk-k">this</span><span class="tk-p">.</span>title <span class="tk-p">}</span> <span class="tk-p">}</span><span class="tk-p">;</span> <span class="tk-p">}</span>
+<span class="tk-p">}</span>
+
+<span class="tk-c">// Behaviors wrap every request, outermost first. One handler per request class.</span>
+<span class="tk-k">const</span> mediator <span class="tk-p">=</span> <span class="tk-f">createMediator</span><span class="tk-p">(</span><span class="tk-p">{</span> behaviors<span class="tk-p">:</span> <span class="tk-p">[</span><span class="tk-k">new</span> <span class="tk-t">MutexBehavior</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">,</span> audit<span class="tk-p">,</span> <span class="tk-k">new</span> <span class="tk-t">LoggingBehavior</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">]</span> <span class="tk-p">}</span><span class="tk-p">)</span><span class="tk-p">;</span>
+mediator<span class="tk-p">.</span><span class="tk-f">register</span><span class="tk-p">(</span><span class="tk-t">GetNote</span><span class="tk-p">,</span> <span class="tk-p">{</span> handle<span class="tk-p">:</span> <span class="tk-k">async</span> <span class="tk-p">(</span>query<span class="tk-p">)</span> <span class="tk-p">=&gt;</span> notes<span class="tk-p">.</span><span class="tk-k">get</span><span class="tk-p">(</span>query<span class="tk-p">.</span>id<span class="tk-p">)</span> <span class="tk-p">}</span><span class="tk-p">)</span><span class="tk-p">;</span>
+mediator<span class="tk-p">.</span><span class="tk-f">register</span><span class="tk-p">(</span><span class="tk-t">RenameNote</span><span class="tk-p">,</span> <span class="tk-k">new</span> <span class="tk-t">RenameNoteHandler</span><span class="tk-p">(</span>store<span class="tk-p">)</span><span class="tk-p">)</span><span class="tk-p">;</span>
+
+<span class="tk-c">// Send from anywhere. The result is typed: here, a Note.</span>
+<span class="tk-k">const</span> note <span class="tk-p">=</span> <span class="tk-k">await</span> mediator<span class="tk-p">.</span><span class="tk-f">send</span><span class="tk-p">(</span><span class="tk-k">new</span> <span class="tk-t">RenameNote</span><span class="tk-p">(</span><span class="tk-s">'n1'</span><span class="tk-p">,</span> <span class="tk-s">'Weekly shop'</span><span class="tk-p">)</span><span class="tk-p">,</span> <span class="tk-p">{</span> actor<span class="tk-p">:</span> <span class="tk-s">'priya'</span> <span class="tk-p">}</span><span class="tk-p">)</span><span class="tk-p">;</span></code></pre></article>
+</div>
+<div class="cards">
+<article class="card"><h2>Core API</h2><dl><dt><code>Command</code></dt><dd>Base class for a request that changes something. Result type defaults to void.</dd><dt><code>Query</code></dt><dd>Base class for a request that only reads.</dd><dt><code>Handler</code></dt><dd>An object with handle(request): Promise&lt;Result&gt;.</dd><dt><code>createMediator</code></dt><dd>Builds a Mediator with the given behaviors, outermost first.</dd><dt><code>Mediator</code></dt><dd>register(Class, handler), send(request, ctx), use(behavior), registeredRequestTypes().</dd><dt><code>RequestContext</code></dt><dd>{ actor, correlationId?, audit?, secrets? }: who is asking. Goes to behaviors, not handlers.</dd><dt><code>MediatorPort</code></dt><dd>The three-method interface to depend on in library code.</dd><dt><code>PipelineBehavior</code></dt><dd>invoke(request, next, ctx): your own step around every request.</dd></dl></article>
+<article class="card"><h2>Built-in behaviors</h2><dl><dt><code>MutexBehavior</code></dt><dd>Request has mutexKey(): string | string[]. One at a time per key, all-or-nothing, fails fast with MutexHeldError. In-process only.</dd><dt><code>AuditBehavior</code></dt><dd>Request has auditInfo(). One row per request, ok or fail, secrets redacted. Needs appendEntry and mapError. A failed write never changes the result.</dd><dt><code>LoggingBehavior</code></dt><dd>Every request. One line: [mediator] Name ok (1.2ms). Pass a sink to redirect.</dd></dl><ul><li>Order is outermost first. With <code>[mutex, audit, logging]</code> a command refused by the lock leaves no audit row; put audit first to record refusals.</li></ul></article>
+<article class="card"><h2>HTTP envelope</h2><p class="intro">From @garkpit/mediator/http. Standard Request and Response objects.</p><pre><code><span class="tk-k">import</span> <span class="tk-p">{</span> fail<span class="tk-p">,</span> ok<span class="tk-p">,</span> readBoundedBody <span class="tk-p">}</span>
+  <span class="tk-k">from</span> <span class="tk-s">'@garkpit/mediator/http'</span><span class="tk-p">;</span>
+
+<span class="tk-f">ok</span><span class="tk-p">(</span>note<span class="tk-p">)</span><span class="tk-p">;</span>                <span class="tk-c">// 200 {&quot;ok&quot;:true,&quot;data&quot;:…}</span>
+<span class="tk-f">ok</span><span class="tk-p">(</span>note<span class="tk-p">,</span> <span class="tk-p">{</span> status<span class="tk-p">:</span> <span class="tk-n">201</span> <span class="tk-p">}</span><span class="tk-p">)</span><span class="tk-p">;</span>
+<span class="tk-f">fail</span><span class="tk-p">(</span><span class="tk-p">{</span> code<span class="tk-p">:</span> <span class="tk-s">'NOT_FOUND'</span><span class="tk-p">,</span> message<span class="tk-p">:</span> <span class="tk-s">'No such note.'</span> <span class="tk-p">}</span><span class="tk-p">)</span><span class="tk-p">;</span>
+                         <span class="tk-c">// 404 {&quot;ok&quot;:false,&quot;error&quot;:…}</span>
+<span class="tk-f">fail</span><span class="tk-p">(</span>error<span class="tk-p">,</span> <span class="tk-p">{</span> table<span class="tk-p">:</span> MY_STATUS_TABLE <span class="tk-p">}</span><span class="tk-p">)</span><span class="tk-p">;</span>
+<span class="tk-k">await</span> <span class="tk-f">readBoundedBody</span><span class="tk-p">(</span>request<span class="tk-p">,</span> <span class="tk-n">16</span> <span class="tk-p">*</span> <span class="tk-n">1024</span><span class="tk-p">)</span><span class="tk-p">;</span>
+                         <span class="tk-c">// or RequestBodyLimitError</span></code></pre><ul><li><code>VALIDATION_FAILED</code> 400 · <code>UNAUTHORIZED</code> 401 · <code>NOT_FOUND</code> 404 · <code>CONFLICT</code> 409 · <code>MUTEX_HELD</code> 409 · <code>PRECONDITION_FAILED</code> 412 · <code>INTERNAL</code> 500 · <code>UPSTREAM_FAILED</code> 502 · unknown 500</li></ul></article>
+<article class="card"><h2>Recipe: add a feature</h2><ul><li>New folder <code>src/features/&lt;area&gt;/&lt;verb-noun&gt;/</code> with <code>VerbNoun.ts</code> (the request), <code>VerbNounHandler.ts</code> and <code>VerbNoun.test.ts</code>.</li><li>One line in the area's <code>index.ts</code>: <code>mediator.register(VerbNoun, new VerbNounHandler(deps))</code>.</li><li>A thin route: parse the input, <code>mediator.send(request, { actor })</code>, then <code>ok(data)</code> or <code>fail(error)</code>.</li><li>Needs a lock? Add <code>mutexKey()</code>. Needs a record? Add <code>auditInfo()</code>. Nothing else changes.</li><li>Using an agent catalogue? Add its entry; the parity test fails until you do.</li></ul></article>
+<article class="card"><h2>Recipe: your own behavior</h2><pre><code><span class="tk-k">class</span> <span class="tk-t">PermissionBehavior</span> <span class="tk-k">implements</span> <span class="tk-t">PipelineBehavior</span> <span class="tk-p">{</span>
+  <span class="tk-k">async</span> invoke<span class="tk-p">&lt;</span>T <span class="tk-k">extends</span> <span class="tk-t">Request</span><span class="tk-p">&lt;</span>R<span class="tk-p">&gt;</span><span class="tk-p">,</span> R<span class="tk-p">&gt;</span><span class="tk-p">(</span>
+    request<span class="tk-p">:</span> T<span class="tk-p">,</span> next<span class="tk-p">:</span> <span class="tk-t">Next</span><span class="tk-p">&lt;</span>R<span class="tk-p">&gt;</span><span class="tk-p">,</span> ctx<span class="tk-p">?</span><span class="tk-p">:</span> <span class="tk-t">RequestContext</span>
+  <span class="tk-p">)</span><span class="tk-p">:</span> <span class="tk-t">Promise</span><span class="tk-p">&lt;</span>R<span class="tk-p">&gt;</span> <span class="tk-p">{</span>
+    <span class="tk-c">// Throw to stop here: the handler never runs.</span>
+    <span class="tk-k">if</span> <span class="tk-p">(</span><span class="tk-p">!</span><span class="tk-p">(</span><span class="tk-k">await</span> <span class="tk-f">allowed</span><span class="tk-p">(</span>request<span class="tk-p">,</span> ctx<span class="tk-p">)</span><span class="tk-p">)</span><span class="tk-p">)</span> <span class="tk-p">{</span>
+      <span class="tk-k">throw</span> <span class="tk-k">new</span> <span class="tk-t">ForbiddenError</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">;</span>
+    <span class="tk-p">}</span>
+    <span class="tk-c">// Or carry on down the pipeline.</span>
+    <span class="tk-k">return</span> <span class="tk-f">next</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">;</span>
+  <span class="tk-p">}</span>
+<span class="tk-p">}</span></code></pre><ul><li>Write behaviors as classes: each class may be used once per mediator, and they are told apart by class name.</li></ul></article>
+<article class="card"><h2>Recipe: an agent tool catalogue</h2><pre><code><span class="tk-c">// One entry per request. This test keeps it honest:</span>
+<span class="tk-f">expect</span><span class="tk-p">(</span>catalogue<span class="tk-p">.</span><span class="tk-f">map</span><span class="tk-p">(</span><span class="tk-p">(</span>tool<span class="tk-p">)</span> <span class="tk-p">=&gt;</span> tool<span class="tk-p">.</span>name<span class="tk-p">)</span><span class="tk-p">.</span><span class="tk-f">sort</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">)</span>
+  <span class="tk-p">.</span><span class="tk-f">toEqual</span><span class="tk-p">(</span><span class="tk-p">[</span><span class="tk-p">...</span>mediator<span class="tk-p">.</span><span class="tk-f">registeredRequestTypes</span><span class="tk-p">(</span><span class="tk-p">)</span><span class="tk-p">]</span><span class="tk-p">)</span><span class="tk-p">;</span>
+
+<span class="tk-c">// Record how a request arrived:</span>
+mediator<span class="tk-p">.</span><span class="tk-f">send</span><span class="tk-p">(</span>request<span class="tk-p">,</span> <span class="tk-p">{</span>
+  actor<span class="tk-p">,</span>
+  audit<span class="tk-p">:</span> <span class="tk-p">{</span> via<span class="tk-p">:</span> <span class="tk-s">'assistant-chat'</span><span class="tk-p">,</span> proposalId <span class="tk-p">}</span>
+<span class="tk-p">}</span><span class="tk-p">)</span><span class="tk-p">;</span></code></pre><ul><li>Queries run at once; Commands become proposals a person confirms. See the agentic interface guide.</li></ul></article>
+<article class="card"><h2>Gotchas</h2><ul><li>Handlers are keyed by <strong>class name</strong>. Names must be unique per mediator, and a server bundle must keep them: <code>bun build --minify --keep-names</code>, esbuild <code>keepNames</code>, Terser <code>keep_classnames</code>.</li><li>The lock lives in one process. Build one <code>MutexBehavior</code> and reuse it. It does not coordinate across servers.</li><li>Hot reload re-runs registrations: pass <code>{ allowReplace: true }</code> to <code>register</code> and <code>use</code> in development only.</li><li>Handlers do not receive the context. Put what they need (an owner id) on the request.</li><li>Sharing request classes with browser code? Import from <code>@garkpit/mediator/Request</code>, which has no imports.</li><li>The exported <code>Request</code> class hides the Fetch API's if imported by name. Extend <code>Command</code> or <code>Query</code>, or alias it.</li><li>A handler that sends another locked command on the same key gets <code>MutexHeldError</code>. Declare every key up front with an array.</li></ul></article>
+<article class="card"><h2>In this repository</h2><dl><dt><code>bun run check</code></dt><dd>Typecheck, unit tests, example tests, docs check, cheat-sheet drift.</dd><dt><code>bun run example</code></dt><dd>A narrated tour of examples/notes: HTTP, chat and MCP doors on one pipeline.</dd><dt><code>bun run docs</code></dt><dd>Regenerate llms.txt, llms-full.txt and the diagrams.</dd><dt><code>bun run cheatsheet</code></dt><dd>Regenerate this sheet (Markdown, HTML, PDF).</dd><dt><code>bun run site</code></dt><dd>Build the documentation site into dist/site; site:serve previews it.</dd></dl></article>
+</div>
+<p class="more">Read more: <a href="../getting-started.md">Getting started</a> · <a href="../commands-and-queries.md">Commands and Queries</a> · <a href="../behaviors.md">Behaviors</a> · <a href="../http.md">HTTP envelope</a> · <a href="../vertical-slices.md">Vertical slices</a> · <a href="../ai-coding-agents.md">AI coding agents</a> · <a href="../agentic-interface.md">Agentic interface</a> · <a href="../api-reference.md">API reference</a> · <a href="../faq.md">FAQ</a> · <a href="https://github.com/garkpit/GarkpitMediator">github.com/garkpit/GarkpitMediator</a></p>
+<script type="application/json" id="page-kit-config" data-page-kit="config">{"direction":"clay","accent":"default","motion":[]}</script>
+<script data-page-kit="runtime">/*
+ * @garkpit/page-kit runtime: motion attributes, the theme toggle and settle() for the critic.
+ * No dependencies, no network. Reads its config from <script type="application/json" id="page-kit-config">.
+ */
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var config = {};
+  try {
+    var cfgEl = document.getElementById("page-kit-config");
+    if (cfgEl) config = JSON.parse(cfgEl.textContent || "{}");
+  } catch (e) { config = {}; }
+  var allowed = Array.isArray(config.motion) ? config.motion : null;
+  var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var STORAGE_KEY = "page-kit-theme";
+
+  /* ---------- theme ---------- */
+  function effectiveTheme() {
+    var explicit = root.getAttribute("data-theme");
+    if (explicit === "light" || explicit === "dark") return explicit;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function labelToggles() {
+    var next = effectiveTheme() === "dark" ? "light" : "dark";
+    document.querySelectorAll("[data-theme-toggle]").forEach(function (b) {
+      b.setAttribute("aria-label", "Switch to " + next + " theme");
+      if (!b.textContent || b.hasAttribute("data-auto-label")) {
+        b.setAttribute("data-auto-label", "");
+        b.textContent = next === "dark" ? "Dark" : "Light";
+      }
+    });
+  }
+  document.addEventListener("click", function (ev) {
+    var t = ev.target && ev.target.closest ? ev.target.closest("[data-theme-toggle]") : null;
+    if (!t) return;
+    var next = effectiveTheme() === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* storage blocked: not remembered */ }
+    labelToggles();
+  });
+
+  window.addEventListener("hashchange", function () {
+    var m = location.hash.match(/theme=(light|dark)/);
+    if (m) { root.setAttribute("data-theme", m[1]); labelToggles(); }
+  });
+
+  /* ---------- items in a byline, kicker or dateline ---------- */
+  var ITEM_SEPARATOR = /\s+([·•|])\s+/;
+  function groupItems(el) {
+    if (el.querySelector(".pk-item")) return;
+    var texts = [];
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    texts.forEach(function (node) {
+      if (!ITEM_SEPARATOR.test(node.nodeValue)) return;
+      var parts = node.nodeValue.split(/\s+[·•|]\s+/);
+      var seps = node.nodeValue.match(/\s+[·•|]\s+/g) || [];
+      var frag = document.createDocumentFragment();
+      parts.forEach(function (part, i) {
+        var span = document.createElement("span");
+        span.className = "pk-item";
+        span.textContent = part + (i < seps.length ? " " + seps[i].trim() : "");
+        frag.appendChild(span);
+        if (i < seps.length) frag.appendChild(document.createTextNode(" "));
+      });
+      node.parentNode.replaceChild(frag, node);
+    });
+  }
+
+  /* ---------- motion ---------- */
+  var nodes = [];
+  function effectOf(el) {
+    var name = el.getAttribute("data-motion");
+    if (allowed && allowed.indexOf(name) === -1) return "fade";
+    return name;
+  }
+  function prepare(el) {
+    var name = effectOf(el);
+    if (name !== el.getAttribute("data-motion")) el.setAttribute("data-motion", name);
+    var delay = parseFloat(el.getAttribute("data-motion-delay") || "");
+    if (isFinite(delay)) el.style.setProperty("--pk-delay", delay + "s");
+    if (name === "cascade") {
+      Array.prototype.forEach.call(el.children, function (c, i) { c.style.setProperty("--pk-i", String(i)); });
+    } else if (name === "meter") {
+      el.querySelectorAll(".bar").forEach(function (b, i) { b.style.setProperty("--pk-i", String(i)); });
+    } else if (name === "words") {
+      splitWords(el);
+    } else if (name === "draw") {
+      el.querySelectorAll("path, line, polyline, polygon, circle, ellipse, rect").forEach(function (s, i) {
+        var len = 0;
+        try { len = s.getTotalLength(); } catch (e) { len = 0; }
+        if (!len) return;
+        s.classList.add("pk-stroke");
+        s.style.strokeDasharray = String(len);
+        s.style.strokeDashoffset = String(len);
+        s.style.setProperty("--pk-i", String(i));
+      });
+    } else if (name === "count") {
+      var text = el.textContent || "";
+      var m = /-?−?\d[\d,]*(\.\d+)?/.exec(text);
+      if (m) {
+        el.setAttribute("data-pk-final", text);
+        el.__pkCount = {
+          prefix: text.slice(0, m.index),
+          suffix: text.slice(m.index + m[0].length),
+          target: parseFloat(m[0].replace(/,/g, "").replace("−", "-")),
+          decimals: m[1] ? m[1].length - 1 : 0,
+          commas: m[0].indexOf(",") !== -1,
+          minus: m[0].indexOf("−") !== -1,
+        };
+      }
+    }
+  }
+  function splitWords(el) {
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    var texts = [];
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    var i = 0;
+    texts.forEach(function (node) {
+      var parts = node.nodeValue.split(/(\s+)/);
+      var frag = document.createDocumentFragment();
+      parts.forEach(function (p) {
+        if (!p) return;
+        if (/^\s+$/.test(p)) { frag.appendChild(document.createTextNode(p)); return; }
+        var span = document.createElement("span");
+        span.className = "pk-word";
+        span.style.setProperty("--pk-i", String(i++));
+        span.textContent = p;
+        frag.appendChild(span);
+      });
+      node.parentNode.replaceChild(frag, node);
+    });
+  }
+  function formatCount(c, v) {
+    var s = Math.abs(v).toFixed(c.decimals);
+    if (c.commas) s = s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    var sign = v < 0 ? (c.minus ? "−" : "-") : "";
+    return c.prefix + sign + s + c.suffix;
+  }
+  function runCount(el) {
+    var c = el.__pkCount;
+    if (!c) return;
+    var dur = (parseFloat(getComputedStyle(el).getPropertyValue("--dur-long")) || 1) * 1000;
+    var start = performance.now();
+    function tick(now) {
+      if (el.__pkSettled) return;
+      var t = Math.min(1, (now - start) / dur);
+      var eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = t >= 1 ? el.getAttribute("data-pk-final") : formatCount(c, c.target * eased);
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    el.textContent = formatCount(c, 0);
+    requestAnimationFrame(tick);
+  }
+  function enter(el) {
+    if (el.classList.contains("pk-in")) return;
+    el.classList.add("pk-in");
+    var name = el.getAttribute("data-motion");
+    if (name === "draw") el.querySelectorAll(".pk-stroke").forEach(function (s) { s.style.strokeDashoffset = "0"; });
+    if (name === "count") runCount(el);
+  }
+
+  var scrollLinked = [];
+  function updateScroll() {
+    if (settled) return;
+    var vh = window.innerHeight || 1;
+    scrollLinked.forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      var name = el.getAttribute("data-motion");
+      var p = Math.min(1, Math.max(0, (vh - r.top) / (vh + r.height)));
+      if (name === "scrub") el.style.setProperty("--progress", p.toFixed(4));
+      else if (name === "zoom") el.style.setProperty("--pk-zoom", (1.08 - 0.08 * p).toFixed(4));
+      else if (name === "drift") {
+        var speed = Math.max(-0.3, Math.min(0.3, parseFloat(el.getAttribute("data-drift") || "0.12")));
+        var centre = r.top + r.height / 2 - vh / 2;
+        el.style.setProperty("--pk-drift", (-centre * speed).toFixed(1) + "px");
+      }
+    });
+  }
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () { ticking = false; updateScroll(); });
+  }
+
+  function setFold() {
+    root.style.setProperty("--pk-vh", (window.innerHeight / 100) + "px");
+  }
+
+  var settled = false;
+  function settle() {
+    settled = true;
+    root.classList.add("pk-settled");
+    nodes.forEach(function (el) {
+      el.__pkSettled = true;
+      el.classList.add("pk-in");
+      if (el.getAttribute("data-motion") === "count" && el.hasAttribute("data-pk-final")) el.textContent = el.getAttribute("data-pk-final");
+      if (el.getAttribute("data-motion") === "draw") el.querySelectorAll(".pk-stroke").forEach(function (s) { s.style.strokeDashoffset = "0"; });
+      if (el.getAttribute("data-motion") === "zoom") el.style.setProperty("--pk-zoom", "1");
+      if (el.getAttribute("data-motion") === "drift") el.style.setProperty("--pk-drift", "0px");
+    });
+    return nodes.length;
+  }
+
+  function init() {
+    labelToggles();
+    document.querySelectorAll(".byline, .dateline, .slate").forEach(groupItems);
+    setFold();
+    var lastWidth = window.innerWidth;
+    window.addEventListener("resize", function () {
+      // Only a width change moves the fold: a height-only resize (a capture, a toolbar) must not re-lay out the page.
+      if (window.innerWidth !== lastWidth) { lastWidth = window.innerWidth; setFold(); }
+      onScroll();
+    });
+    nodes = Array.prototype.slice.call(document.querySelectorAll("[data-motion]"));
+    nodes.forEach(prepare);
+    if (reduced || !root.classList.contains("pk-motion")) { settle(); return; }
+    var hash = location.hash + location.search;
+    if (/pk-static/.test(hash)) { settle(); return; }
+    // A fully clipped element (wipe, unveil) never intersects anything, so those are watched
+    // through their parent: when the parent comes into view, its clipped children enter.
+    var waiting = new Map();
+    var io = "IntersectionObserver" in window ? new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        (waiting.get(en.target) || []).forEach(enter);
+        waiting.delete(en.target);
+        io.unobserve(en.target);
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0 }) : null;
+    nodes.forEach(function (el) {
+      var name = el.getAttribute("data-motion");
+      if (name === "zoom" || name === "drift" || name === "scrub") { scrollLinked.push(el); return; }
+      if (!io) { enter(el); return; }
+      var watch = (name === "wipe" || name === "unveil") && el.parentElement ? el.parentElement : el;
+      if (!waiting.has(watch)) { waiting.set(watch, []); io.observe(watch); }
+      waiting.get(watch).push(el);
+    });
+    if (scrollLinked.length) { window.addEventListener("scroll", onScroll, { passive: true }); updateScroll(); }
+  }
+
+  window.pageKit = { version: "0.1.0", settle: settle, theme: effectiveTheme, isSettled: function () { return settled; } };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>
+</body>
+</html>

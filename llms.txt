@@ -1,0 +1,26 @@
+# GarkpitMediator (@garkpit/mediator)
+
+> A small, zero-dependency CQRS mediator for TypeScript web apps. Every feature is a named Command or Query with exactly one handler, sent through one pipeline of shared behaviors (locking, auditing, logging, or your own). The result is a codebase that people and AI coding agents can both find their way around as it grows, and an app whose capabilities can be handed to a chat assistant or an MCP server as tools.
+
+Source: https://github.com/garkpit/GarkpitMediator (MIT). There is no npm package: the source is copied into a project. The whole manual as one file: [llms-full.txt](llms-full.txt).
+
+## Guides
+
+- [Getting started](docs/getting-started.md): Copy the library in, write your first Command and Query, add locking and an audit trail.
+- [Commands and Queries](docs/commands-and-queries.md): Request classes, handlers, registering, sending, and the request context that says who is asking.
+- [Behaviors](docs/behaviors.md): The pipeline around every request: the built-in lock, audit and logging behaviors, and how to write your own.
+- [The HTTP envelope and body limits](docs/http.md): ok and fail JSON responses, error codes and statuses, and reading a request body with a size limit.
+- [Growing an app with vertical slices](docs/vertical-slices.md): One folder per feature: the layout, the rules, and why a change costs the same at any size.
+- [Working with AI coding agents](docs/ai-coding-agents.md): Why this structure suits coding agents, the snippet for your AGENTS.md, and llms.txt.
+- [The agentic interface](docs/agentic-interface.md): Turn your Commands and Queries into tools for a chat assistant and an MCP server, through the same audited pipeline.
+- [API reference](docs/api-reference.md): Every export of @garkpit/mediator and @garkpit/mediator/http, checked against the source.
+- [FAQ and gotchas](docs/faq.md): Minifiers and class names, hot reload, locks across servers, browser imports, and what the library does not do.
+
+## For coding agents
+
+- [AGENTS.md snippet](docs/snippets/AGENTS.md): rules to paste into a project that uses the mediator, so agents add features the same way every time.
+- [Cheat sheet](docs/cheatsheet/GarkpitMediator-CheatSheet.md): install, the API, recipes and gotchas on one page.
+
+## Example
+
+- [examples/notes](examples/notes/README.md): a runnable app with four features, an HTTP door, a chat-assistant door and an MCP door sharing one pipeline.

@@ -1,0 +1,61 @@
+/*
+ * @garkpit/page-kit motion. Pages write data-motion="<effect>"; the kit owns easing, duration,
+ * stagger and triggering. Content is hidden only while html has the pk-motion class, which the
+ * head snippet adds and removes again if the kit's script never arrives, and which is never added
+ * under prefers-reduced-motion. So without JavaScript, everything is simply visible.
+ */
+[data-motion] {
+  transition-property: opacity, transform, filter, clip-path, --pk-meter;
+  transition-duration: var(--dur);
+  transition-timing-function: var(--ease);
+  transition-delay: var(--pk-delay, 0s);
+}
+html.pk-motion [data-motion="fade"]:not(.pk-in) { opacity: 0; }
+html.pk-motion [data-motion="rise"]:not(.pk-in) { opacity: 0; transform: translateY(var(--distance)); }
+html.pk-motion [data-motion="wipe"]:not(.pk-in) { clip-path: inset(0 100% 0 0); }
+html.pk-motion [data-motion="unveil"]:not(.pk-in) { clip-path: inset(100% 0 0 0); }
+html.pk-motion [data-motion="focus"]:not(.pk-in) { opacity: 0; filter: blur(14px); transform: scale(1.015); }
+html.pk-motion [data-motion="scale"]:not(.pk-in) { opacity: 0; transform: scale(0.94); }
+[data-motion="wipe"], [data-motion="unveil"] { clip-path: inset(0 0 0 0); transition-duration: var(--dur-long); }
+[data-motion="focus"] { transition-duration: var(--dur-long); }
+
+/* cascade: the parent stays put, its children enter in turn (the script numbers them --pk-i) */
+[data-motion="cascade"] { transition: none; }
+[data-motion="cascade"] > * {
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+  transition-delay: calc(var(--pk-delay, 0s) + var(--pk-i, 0) * var(--stagger));
+}
+html.pk-motion [data-motion="cascade"]:not(.pk-in) > * { opacity: 0; transform: translateY(var(--distance)); }
+
+/* words: the script wraps each word in .pk-word */
+[data-motion="words"] { transition: none; }
+.pk-word { display: inline-block; transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); transition-delay: calc(var(--pk-delay, 0s) + var(--pk-i, 0) * var(--stagger)); }
+html.pk-motion [data-motion="words"]:not(.pk-in) .pk-word { opacity: 0; transform: translateY(0.35em); }
+
+/* meter: bars grow along their line; any other element scales out from its start */
+[data-motion="meter"] { transition-duration: var(--dur-long); }
+html.pk-motion .bar[data-motion="meter"]:not(.pk-in),
+html.pk-motion [data-motion="meter"]:not(.pk-in) .bar { --pk-meter: 0; }
+[data-motion="meter"] .bar { transition: --pk-meter var(--dur-long) var(--ease); transition-delay: calc(var(--pk-delay, 0s) + var(--pk-i, 0) * var(--stagger)); }
+html.pk-motion [data-motion="meter"]:not(.bar):not(.bars):not(.pk-in) { transform: scaleX(0); transform-origin: left center; }
+
+/* draw: the script sets the dash lengths */
+[data-motion="draw"] { transition: none; }
+[data-motion="draw"] .pk-stroke { transition: stroke-dashoffset var(--dur-long) var(--ease); transition-delay: calc(var(--pk-delay, 0s) + var(--pk-i, 0) * var(--stagger)); }
+
+/* scroll-linked: values set by the script every frame */
+[data-motion="zoom"] { transition: none; transform: scale(var(--pk-zoom, 1)); transform-origin: center; }
+[data-motion="drift"] { transition: none; transform: translateY(var(--pk-drift, 0px)); }
+[data-motion="scrub"] { transition: none; }
+
+/* settled: what the critic photographs, and what print shows */
+html.pk-settled [data-motion], html.pk-settled [data-motion] *, html.pk-settled .pk-word { transition: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-motion], [data-motion] *, .pk-word { transition: none !important; }
+  html.pk-motion [data-motion] { opacity: 1 !important; transform: none !important; filter: none !important; clip-path: none !important; }
+}
+@media print {
+  [data-motion], [data-motion] > *, .pk-word { opacity: 1 !important; transform: none !important; filter: none !important; clip-path: none !important; }
+  .bar { --pk-meter: 1 !important; }
+}

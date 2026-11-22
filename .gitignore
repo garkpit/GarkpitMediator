@@ -1,3 +1,6 @@
 node_modules/
 *.log
 .DS_Store
+# Built site and scratch folders (rebuild with: bun run site)
+dist/
+.docs-check/

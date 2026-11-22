@@ -1,103 +1,171 @@
-# @garkpit/mediator
+# GarkpitMediator
 
-A small CQRS mediator for TypeScript web apps: every request is a `Command` (a mutation) or a `Query`
-(a read), dispatched with `mediator.send(request, ctx)` to the one handler registered for its class,
-through an ordered pipeline of behaviors (mutex, audit, logging, or your own). It also ships the
-two-shape JSON route envelope (`ok` / `fail`) and a bounded request-body reader.
+**One front door for every feature.** `@garkpit/mediator` is a small CQRS mediator for TypeScript web
+apps. Every feature becomes a named **Command** (it changes something) or **Query** (it reads
+something) with exactly one handler, and every request travels the same pipeline of shared steps:
+locking, an audit record, a log line, or your own.
 
-Zero runtime dependencies. Source-only TypeScript (exports point at `src/*.ts`); runs on Bun and on
-any bundler that compiles TypeScript.
+The result is an app that stays easy to find your way around as it grows, for people and for AI coding
+agents alike. And because everything the app can do is already a list of named, typed requests, that
+list can be handed to a chat assistant or an MCP server as tools.
 
-## Quick start
+Zero runtime dependencies. Source-only TypeScript. Runs on [Bun](https://bun.sh) and on any bundler
+that compiles TypeScript. MIT licence.
+
+![The request pipeline: send passes through each behavior, outermost first, reaches the one handler, and the result travels back out through the same behaviors in reverse.](docs/images/pipeline.svg)
+
+## Why
+
+**For people.** A feature is one folder: a request class, a handler and a test. You find things by
+name. Adding the hundredth feature costs what the first one did: a new folder and one registration
+line. Rules that apply everywhere (locks, audit, logging, permissions) are written once, as behaviors,
+and can never be forgotten on a new endpoint.
+
+**For AI coding agents.** An agent starts every task knowing nothing about your project, and does best
+where there is one obvious place for each thing. Here the answer to "where does this go?" is always
+the same, the list of features can be read in seconds, and the compiler checks the wiring. The
+repository ships an [`AGENTS.md` snippet](docs/snippets/AGENTS.md) that teaches an agent the pattern,
+and the whole manual as one text file, [`llms-full.txt`](llms-full.txt), that travels with the library
+into your project. See [Working with AI coding agents](docs/ai-coding-agents.md).
+
+**For AI agents that use your app.** Every Command and Query is a tool waiting to be listed. Describe
+each once and a chat assistant inside your app, or an outside agent over MCP, can read and operate the
+app through the same locked, audited door that people use: reads run at once, changes wait for a person
+to confirm. See [The agentic interface](docs/agentic-interface.md).
+
+## 60-second quick start
 
 ```ts
-import { Command, Query, createMediator, MutexBehavior, AuditBehavior, LoggingBehavior } from '@garkpit/mediator';
+import { AuditBehavior, Command, Query, createMediator, LoggingBehavior, MutexBehavior } from '@garkpit/mediator';
 
-class GetNote extends Query<Note> { constructor(readonly id: string) { super(); } }
-class RenameNote extends Command<Note> {
-  constructor(readonly id: string, readonly title: string) { super(); }
-  mutexKey() { return `note:${this.id}`; }                                        // HasMutexKey
-  auditInfo() { return { action: 'note.rename', resourceId: this.id, details: { title: this.title } }; } // HasAuditInfo
+interface Note {
+  id: string;
+  title: string;
+}
+const notes = new Map<string, Note>([['n1', { id: 'n1', title: 'Shopping' }]]);
+
+// A Query reads. A Command changes something. The type parameter is what the handler returns.
+class GetNote extends Query<Note | undefined> {
+  constructor(readonly id: string) {
+    super();
+  }
 }
 
-// Stateful behaviors are built once per process and reused (see "Process-scoped state").
-const mutex = new MutexBehavior();
-const audit = new AuditBehavior({ appendEntry: async (entry) => db.insertAudit(entry), mapError: (e) => ({ code: codeFor(e) }) });
+class RenameNote extends Command<Note> {
+  constructor(readonly id: string, readonly title: string) {
+    super();
+  }
+  // Opt in to shared rules by adding a method. The handler stays three lines.
+  mutexKey() {
+    return `note:${this.id}`; // one rename per note at a time
+  }
+  auditInfo() {
+    return { action: 'note.rename', resourceId: this.id, details: { title: this.title } };
+  }
+}
 
-export const mediator = createMediator({ behaviors: [mutex, audit, new LoggingBehavior()] });
-mediator.register(GetNote, { handle: async (q) => notes.get(q.id) });
-mediator.register(RenameNote, { handle: async (c) => notes.rename(c.id, c.title) });
+// One mediator. Behaviors wrap every request, outermost first.
+export const mediator = createMediator({
+  behaviors: [
+    new MutexBehavior(),
+    new AuditBehavior({ appendEntry: async (entry) => console.log('audit:', entry.actor, entry.action, entry.outcome), mapError: () => ({ code: 'INTERNAL' }) }),
+    new LoggingBehavior()
+  ]
+});
 
-const note = await mediator.send(new RenameNote('n1', 'New title'), { actor: 'alice' });
+// Exactly one handler per request class.
+mediator.register(GetNote, { handle: async (query) => notes.get(query.id) });
+mediator.register(RenameNote, {
+  handle: async (command) => {
+    const note = { id: command.id, title: command.title };
+    notes.set(note.id, note);
+    return note;
+  }
+});
+
+// Send from anywhere: a route, a test, a job, an AI agent. The result is typed.
+const renamed = await mediator.send(new RenameNote('n1', 'Weekly shop'), { actor: 'priya' });
+console.log(renamed.title, mediator.registeredRequestTypes());
 ```
 
-## Public surface
+```text
+[mediator] RenameNote ok (0.3ms)
+audit: priya note.rename ok
+Weekly shop [ "GetNote", "RenameNote" ]
+```
 
-`@garkpit/mediator` (the root) exports everything below. The subpaths in `package.json` (`./Mediator`,
-`./http`, `./behaviors/AuditBehavior`, …) expose single files for consumers that re-export them one by
-one; they are the same objects.
+Want to see a whole app? `bun install && bun run example` runs [`examples/notes`](examples/notes/README.md):
+four features, an HTTP door, a chat-assistant door and an MCP door, one pipeline.
 
-| Export | What it is |
+## What is in the box
+
+| Part | What it does |
 |---|---|
-| `Request<R>`, `Command<R>`, `Query<R>` | Base classes. `R` is the response type; `Command` defaults to `void`. |
-| `Handler<TRequest, R>`, `RequestConstructor<T>` | `{ handle(request): Promise<R> }`, and the class type `register` takes. |
-| `Mediator` | `register(ctor, handler, { allowReplace? })`, `use(behavior, { allowReplace? })`, `send(request, ctx?)`, `registeredRequestTypes()`. |
-| `createMediator({ behaviors })` | A `Mediator` with the given behaviors installed, outermost first. |
-| `MediatorPort` | The structural surface a library needs from a host's mediator: `register`, `registeredRequestTypes`, `send`. Depend on this type, not on the class, when your library should work with any mediator of that shape. |
-| `RequestContext` | `{ actor, correlationId?, audit?, secrets? }`, threaded to every behavior. `audit` adds per-send key/values to the audit row's details without overwriting the command's own; `secrets` are values the audit row must never contain (replaced with `[REDACTED]` in details and the error message). |
-| `PipelineBehavior`, `Next<R>` | `invoke(request, next, ctx?)`. Call `next()` to continue; throw or return to short-circuit. |
-| `MutexBehavior`, `HasMutexKey`, `isMutexed`, `MutexHeldError` | In-process, all-or-nothing locking on the keys a command declares (sorted acquisition; released on every exit path). A held key fails fast with `MutexHeldError`. |
-| `AuditBehavior<TInfo>`, `AuditBehaviorOptions`, `AuditWriter`, `AuditLogWriter`, `AuditErrorMapper`, `AuditFailureReporter`, `SecretsRedactor`, `auditEntryToLogEntry` | One audit row per `HasAuditInfo` request, ok or fail, redacted, written without ever changing the command's result. Writers receive `(entry, info)`. |
-| `AuditInfo`, `HasAuditInfo<TInfo>`, `isAuditable`, `AuditEntry`, `AuditOutcome` | What a command reports, and the row the behavior builds. |
-| `LogEntry`, `LogLevel`, `LogEventType`, `LogOutcome`, `LogErrorDetails`, `LOG_LEVELS`, `LOG_EVENT_TYPES` | The generic log shape an audit row can be mirrored into (`appendLogEntry` + `logSource`). |
-| `LoggingBehavior`, `MediatorLogSink` | One line per request (`[mediator] Name ok (1.2ms)`), to `console.log` unless you pass a sink. |
-| `redactSecrets` | Replaces values under secret-looking keys (`token`, `password`, `api_key`, `authorization`, `cookie`, …) with `[REDACTED]`, four levels deep. |
-| `HandlerNotRegisteredError`, `HandlerAlreadyRegisteredError`, `BehaviorAlreadyRegisteredError` | Registration and dispatch errors. |
+| `Command`, `Query`, `Handler` | The request classes and the one-method handler interface. |
+| `Mediator`, `createMediator` | `register` a handler, `send` a request, `use` a behavior, and list what is registered. |
+| `MutexBehavior` | Stops two commands that name the same key from running at once. Fails fast, releases on every exit. |
+| `AuditBehavior` | One record per audited request, success or failure, with secrets redacted. Never changes the outcome. |
+| `LoggingBehavior` | One line per request with its name, outcome and duration. |
+| `PipelineBehavior` | The interface for your own: permissions, rate limits, timing, anything that should apply to every request. |
+| `@garkpit/mediator/http` | `ok` and `fail` for one JSON response shape, and `readBoundedBody` to refuse oversized request bodies. |
 
-`@garkpit/mediator/http` (not re-exported from the root, so a browser bundle never pulls it in by accident):
+## Documentation
 
-| Export | What it is |
-|---|---|
-| `ok(data, { status?, headers? })` | `{"ok":true,"data":…}`, JSON, explicit content-length. |
-| `fail({ code, message, details? }, { statusOverride?, table? })` | `{"ok":false,"error":{…}}` with the status from the code. |
-| `ApiErrorShape<Code>`, `OkInit` | The error body and `ok`'s options. |
-| `DEFAULT_STATUS_FOR_CODE`, `statusForCode(code, table?)` | `VALIDATION_FAILED` 400, `UNAUTHORIZED` 401, `NOT_FOUND` 404, `CONFLICT`/`MUTEX_HELD` 409, `PRECONDITION_FAILED` 412, `INTERNAL` 500, `UPSTREAM_FAILED` 502; unknown codes 500. Extend the table with your own codes. |
-| `readBoundedBody(request, limit)`, `RequestBodyLimitError` | Reads a body up to `limit` bytes: a declared content-length over the limit is refused before reading, a stream is cancelled the moment it passes it. |
+1. [Getting started](docs/getting-started.md)
+2. [Commands and Queries](docs/commands-and-queries.md)
+3. [Behaviors](docs/behaviors.md): the built-in three, and writing your own
+4. [The HTTP envelope and body limits](docs/http.md)
+5. [Growing an app with vertical slices](docs/vertical-slices.md)
+6. [Working with AI coding agents](docs/ai-coding-agents.md)
+7. [The agentic interface](docs/agentic-interface.md): chat and MCP
+8. [API reference](docs/api-reference.md)
+9. [FAQ and gotchas](docs/faq.md)
 
-## Things to know
+Plus a one-page [cheat sheet](docs/cheatsheet/GarkpitMediator-CheatSheet.md)
+([PDF](docs/cheatsheet/GarkpitMediator-CheatSheet.pdf)), and [`llms.txt`](llms.txt) for language models.
 
-- **Handlers and behaviors are keyed by class name** (`constructor.name`), not class identity. That is
-  what lets Vite's SSR hot reload redefine a request class and still reach its handler. Two consequences:
-  request class names must be unique within one mediator, and **a minifier that renames classes breaks
-  dispatch silently**. Keep class names in server bundles (esbuild/Bun `keepNames`, Terser
-  `keep_classnames`), or do not minify server code.
-- **Process-scoped state**: `MutexBehavior` holds its locks in memory, per instance and per process.
-  Build it once at module scope and pass the same instance to every mediator you create; it does not
-  coordinate across processes or machines.
-- **App-specific audit dimensions** (a tenant, an instance) are not fields of `AuditInfo` or
-  `AuditEntry`. Extend `AuditInfo` in the app, type the behavior with it (`new AuditBehavior<AppAuditInfo>(…)`),
-  and add the fields in your writer, which receives the request's info next to the entry. Your app's
-  log sources, log and audit query filters and paging are app code too.
-- **`allowReplace`** is for dev-mode hot reload only. In production a duplicate registration throws.
-- The audit and log writers are awaited but isolated: a writer that throws is reported
-  (`console.error` unless you pass `reportFailure`) and the command's result or error is unchanged.
+## Things to know before you adopt it
+
+- **Handlers are found by class name,** not class identity, so development hot reload keeps working.
+  The cost: request class names must be unique within one mediator, and a minifier must not rename
+  classes in a server bundle (`--keep-names` in Bun, `keepNames` in esbuild). See the
+  [FAQ](docs/faq.md#my-production-build-misbehaves-but-development-works).
+- **The lock is in-process.** `MutexBehavior` holds its locks in memory. It does not coordinate across
+  several server processes. Build one instance and reuse it.
+- **`allowReplace` is for development hot reload only.** In production a duplicate registration throws.
+- **Audit writers are isolated.** A writer that throws is reported and the command's result is
+  unchanged.
 
 ## Using it
 
-There is no npm package. Copy this repository into your project as a synced export
-(for example `packages/mediator`) with a `SOURCE.md` beside it that records the commit you took, and
-depend on it as a workspace package:
+There is no npm package. Copy the library into your project as a synced export (a folder you replace
+wholesale, never edit) and record the commit you took:
 
 ```sh
-git -C /path/to/GarkpitMediator archive <commit> | tar -x -C packages/mediator
+git clone https://github.com/garkpit/GarkpitMediator.git ../GarkpitMediator
+mkdir -p packages/mediator
+git -C ../GarkpitMediator archive HEAD src package.json tsconfig.json LICENSE README.md llms-full.txt \
+  | tar -x -C packages/mediator
+echo "Source: https://github.com/garkpit/GarkpitMediator at $(git -C ../GarkpitMediator rev-parse HEAD)" \
+  > packages/mediator/SOURCE.md
 ```
+
+Then depend on it as a workspace package (`"@garkpit/mediator": "workspace:*"`). The full steps are in
+[Getting started](docs/getting-started.md#install-copy-it-in).
 
 ## Develop
 
 ```sh
 bun install
-bun run check      # typecheck, then unit tests: dispatch, pipeline, behaviors, envelope, body limit
+bun run check      # typecheck, unit tests, the example's tests, the docs check, cheat-sheet drift
+bun run example    # the narrated tour of examples/notes
+bun run docs       # regenerate llms.txt, llms-full.txt and the diagrams
+bun run site       # build the documentation site into dist/site
+bun run site:serve # build it and serve it on your own machine
 ```
+
+Nothing under `src/` depends on anything outside it. The docs, example and site tooling use only Bun
+and the TypeScript compiler.
 
 ## Disclaimer
 

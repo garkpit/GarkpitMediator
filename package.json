@@ -13,7 +13,8 @@
   "files": [
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "llms-full.txt"
   ],
   "exports": {
     ".": {
@@ -82,14 +83,21 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.repo.json",
     "test": "bun test",
-    "check": "bun run typecheck && bun test"
+    "example": "bun examples/notes/main.ts tour",
+    "docs": "bun scripts/docs.ts write",
+    "docs:check": "bun scripts/docs.ts check",
+    "cheatsheet": "bun scripts/cheatsheet/cli.ts build",
+    "cheatsheet:check": "bun scripts/cheatsheet/cli.ts check",
+    "site": "bun scripts/site.ts build",
+    "site:serve": "bun scripts/site.ts serve",
+    "check": "bun run typecheck && bun test && bun run docs:check && bun run cheatsheet:check"
   },
   "dependencies": {},
   "devDependencies": {
-    "typescript": "^6.0.2",
+    "@types/node": "^25.9.1",
     "bun-types": "^1.3.1",
-    "@types/node": "^25.9.1"
+    "typescript": "^6.0.2"
   }
 }

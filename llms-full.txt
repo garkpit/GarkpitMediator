@@ -1,0 +1,2135 @@
+# GarkpitMediator (@garkpit/mediator): the complete manual
+
+> A small, zero-dependency CQRS mediator for TypeScript web apps. Every feature is a named Command or Query with exactly one handler, sent through one pipeline of shared behaviors (locking, auditing, logging, or your own). The result is a codebase that people and AI coding agents can both find their way around as it grows, and an app whose capabilities can be handed to a chat assistant or an MCP server as tools.
+
+Source: https://github.com/garkpit/GarkpitMediator (MIT). This file is every guide joined together, generated from docs/*.md.
+
+---
+
+<!-- docs/getting-started.md -->
+
+# Getting started
+
+`@garkpit/mediator` is a small TypeScript library that gives every feature in your app one front door.
+Each thing the app can do is a named class: a **Command** if it changes something, a **Query** if it
+only reads. You hand one to the **mediator** (the object that knows which piece of code handles which
+request) and it runs the one handler registered for that class, wrapped in whatever shared steps you
+have installed: locking, an audit record, a log line, or your own.
+
+It has no runtime dependencies and ships as TypeScript source. It runs on [Bun](https://bun.sh) and on
+any bundler that compiles TypeScript.
+
+## Install: copy it in
+
+There is no npm package. You copy the source into your project and record which commit you took. The
+copy is called a *synced export*: a folder you never edit by hand and replace wholesale when you want
+a newer version.
+
+```sh
+# 1. Fetch the library somewhere outside your app
+git clone https://github.com/garkpit/GarkpitMediator.git ../GarkpitMediator
+
+# 2. Copy the library files (not the docs site or examples) into your app
+mkdir -p packages/mediator
+git -C ../GarkpitMediator archive HEAD src package.json tsconfig.json LICENSE README.md llms-full.txt \
+  | tar -x -C packages/mediator
+
+# 3. Record where it came from
+echo "Source: https://github.com/garkpit/GarkpitMediator at $(git -C ../GarkpitMediator rev-parse HEAD)" \
+  > packages/mediator/SOURCE.md
+```
+
+Then make it a workspace package. In your app's `package.json`:
+
+```json
+{
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "@garkpit/mediator": "workspace:*"
+  }
+}
+```
+
+Run `bun install` and import from `@garkpit/mediator`. The copied folder includes `llms-full.txt`, the
+whole manual as one text file, so a coding agent working in your repository can read how the library
+works without leaving it. See [Working with AI coding agents](ai-coding-agents.md).
+
+Prefer no workspace? Copy just `src/` to somewhere like `src/lib/mediator/` and import it by relative
+path. Everything on this site works the same way.
+
+## Your first Command and Query
+
+```ts
+import { Command, Query, createMediator, LoggingBehavior } from '@garkpit/mediator';
+
+interface Note {
+  id: string;
+  title: string;
+}
+const notes = new Map<string, Note>();
+
+// A Query reads. Its type parameter is what the handler returns.
+class GetNote extends Query<Note | undefined> {
+  constructor(readonly id: string) {
+    super();
+  }
+}
+
+// A Command changes something.
+class AddNote extends Command<Note> {
+  constructor(readonly title: string) {
+    super();
+  }
+}
+
+// One mediator for the app. LoggingBehavior prints one line per request.
+const mediator = createMediator({ behaviors: [new LoggingBehavior()] });
+
+// Exactly one handler per request class.
+mediator.register(GetNote, { handle: async (query) => notes.get(query.id) });
+mediator.register(AddNote, {
+  handle: async (command) => {
+    const note = { id: `n${notes.size + 1}`, title: command.title };
+    notes.set(note.id, note);
+    return note;
+  }
+});
+
+// Send a request. The second argument says who is asking.
+const added = await mediator.send(new AddNote('Buy oat milk'), { actor: 'priya' });
+const found = await mediator.send(new GetNote(added.id), { actor: 'priya' });
+console.log(found?.title); // "Buy oat milk"
+```
+
+Running it prints:
+
+```text
+[mediator] AddNote ok (0.2ms)
+[mediator] GetNote ok (0.0ms)
+Buy oat milk
+```
+
+Three things to notice:
+
+- **`send` is typed end to end.** `added` is a `Note` and `found` is a `Note | undefined`, taken from the
+  class's type parameter. There is no casting and no string name to mistype.
+- **The caller does not know the handler.** A route, a test, a scheduled job and a chat assistant all
+  send the same `AddNote`. You can move, rewrite or split the handler without touching any of them.
+- **The log line came from the pipeline.** Neither handler mentions logging. The next section is why
+  that matters.
+
+## Add locking and an audit trail without touching a handler
+
+Shared steps are called **behaviors**. Each one wraps every request, so a rule written once applies
+everywhere. Two come with the library:
+
+- `MutexBehavior` stops two commands working on the same thing at the same time.
+- `AuditBehavior` writes one record of who did what, whether it worked or failed.
+
+A command opts in by adding a method. Nothing else changes:
+
+```ts
+import { AuditBehavior, Command, createMediator, LoggingBehavior, MutexBehavior, type AuditEntry } from '@garkpit/mediator';
+
+class RenameNote extends Command<void> {
+  constructor(readonly id: string, readonly title: string) {
+    super();
+  }
+  // "Only one rename of this note at a time."
+  mutexKey() {
+    return `note:${this.id}`;
+  }
+  // "Record this change."
+  auditInfo() {
+    return { action: 'note.rename', resourceId: this.id, details: { title: this.title } };
+  }
+}
+
+const auditLog: AuditEntry[] = [];
+
+const mediator = createMediator({
+  // Outermost first: take the lock, then audit, then log, then run the handler.
+  behaviors: [
+    new MutexBehavior(),
+    new AuditBehavior({
+      appendEntry: async (entry) => {
+        auditLog.push(entry); // a real app inserts a database row here
+      },
+      mapError: () => ({ code: 'INTERNAL' })
+    }),
+    new LoggingBehavior()
+  ]
+});
+
+mediator.register(RenameNote, { handle: async () => {} });
+await mediator.send(new RenameNote('n1', 'Weekly shop'), { actor: 'priya' });
+console.log(auditLog[0]?.action, auditLog[0]?.actor, auditLog[0]?.outcome); // note.rename priya ok
+```
+
+## See it all working
+
+The repository has a small runnable app, [`examples/notes`](../examples/notes/README.md), with four
+features, an HTTP door, a chat-assistant door and an MCP door, all sharing one pipeline:
+
+```sh
+git clone https://github.com/garkpit/GarkpitMediator.git
+cd GarkpitMediator
+bun install
+bun run example
+```
+
+## Where next
+
+- [Commands and Queries](commands-and-queries.md): the request classes in detail.
+- [Behaviors](behaviors.md): the three built in, and how to write your own.
+- [Growing an app with vertical slices](vertical-slices.md): the folder layout that keeps a growing
+  codebase easy to find your way around.
+- [Working with AI coding agents](ai-coding-agents.md): the snippet to paste into your `AGENTS.md`.
+
+---
+
+<!-- docs/commands-and-queries.md -->
+
+# Commands and Queries
+
+Every request your app handles is one of two things. A **Query** reads and returns data. A **Command**
+changes something. The split is called CQRS (Command Query Responsibility Segregation), and in this
+library it is nothing more than two base classes and a habit: name each thing the app can do, and say
+which kind it is.
+
+## Writing a request class
+
+A request is a class that extends `Query<R>` or `Command<R>`. `R` is the type its handler returns.
+The constructor carries the inputs.
+
+```ts
+import { Command, Query } from '@garkpit/mediator';
+
+interface Invoice {
+  id: string;
+  customer: string;
+  totalPence: number;
+  paid: boolean;
+}
+
+// Reads one invoice.
+export class GetInvoice extends Query<Invoice> {
+  constructor(readonly id: string) {
+    super();
+  }
+}
+
+// Reads many, with a filter.
+export class ListInvoices extends Query<Invoice[]> {
+  constructor(readonly filter: { customer?: string; unpaidOnly?: boolean } = {}) {
+    super();
+  }
+}
+
+// Changes one, and returns the new state.
+export class MarkInvoicePaid extends Command<Invoice> {
+  constructor(readonly id: string, readonly paidOn: Date) {
+    super();
+  }
+}
+
+// Changes something and returns nothing: Command's result type defaults to void.
+export class SendInvoiceReminder extends Command {
+  constructor(readonly id: string) {
+    super();
+  }
+}
+```
+
+Good request classes share a few traits:
+
+- **The name is verb then noun, and says what happens.** `MarkInvoicePaid`, not `InvoiceUpdate` or
+  `HandleInvoice`. The list of class names should read like a description of the app.
+- **The inputs are already valid.** Parse untyped input (a JSON body, a tool call) before you construct
+  the request, so a handler never has to wonder whether `id` is really a string. A static `parse`
+  method on the class is a tidy home for that; see [vertical slices](vertical-slices.md).
+- **They hold data, not behaviour.** No database handles, no services. A request should be something
+  you could print.
+- **One name, once.** The mediator finds handlers by class name, so two request classes in one app
+  cannot share a name. See the [FAQ](faq.md#why-are-handlers-keyed-by-class-name) for why.
+
+## Writing a handler
+
+A handler is any object with a `handle` method that takes the request and returns a promise of the
+result. Use a class when the handler needs things (a database, a mail sender), so they arrive through
+the constructor and tests can swap them:
+
+```ts
+import type { Handler } from '@garkpit/mediator';
+
+interface InvoiceStore {
+  find(id: string): Promise<Invoice | undefined>;
+  save(invoice: Invoice): Promise<void>;
+}
+
+class InvoiceNotFoundError extends Error {}
+
+export class GetInvoiceHandler implements Handler<GetInvoice, Invoice> {
+  constructor(private readonly store: InvoiceStore) {}
+
+  async handle(query: GetInvoice): Promise<Invoice> {
+    const invoice = await this.store.find(query.id);
+    if (!invoice) throw new InvoiceNotFoundError(`Invoice ${query.id} does not exist.`);
+    return invoice;
+  }
+}
+
+export class MarkInvoicePaidHandler implements Handler<MarkInvoicePaid, Invoice> {
+  constructor(private readonly store: InvoiceStore) {}
+
+  async handle(command: MarkInvoicePaid): Promise<Invoice> {
+    const invoice = await this.store.find(command.id);
+    if (!invoice) throw new InvoiceNotFoundError(`Invoice ${command.id} does not exist.`);
+    const paid = { ...invoice, paid: true };
+    await this.store.save(paid);
+    return paid;
+  }
+}
+```
+
+A handler knows about the things it needs and nothing about how it was called. It never sees an HTTP
+request, a cookie or a response. That is what lets the same handler serve a web page, a command-line
+tool, a scheduled job and an AI agent.
+
+## Registering and sending
+
+```ts
+import { createMediator, HandlerNotRegisteredError } from '@garkpit/mediator';
+
+const mediator = createMediator();
+
+mediator.register(GetInvoice, new GetInvoiceHandler(store));
+mediator.register(MarkInvoicePaid, new MarkInvoicePaidHandler(store));
+
+// The result type follows the request class: `invoice` is an Invoice.
+const invoice = await mediator.send(new MarkInvoicePaid('inv-204', new Date()), { actor: 'omar' });
+console.log(invoice.paid);
+
+// The app can list what it is able to do.
+console.log(mediator.registeredRequestTypes()); // ['GetInvoice', 'MarkInvoicePaid']
+```
+
+What can go wrong, and what you get:
+
+| Situation | Result |
+|---|---|
+| You `send` a request nobody registered a handler for | `HandlerNotRegisteredError`, with the class name in `requestName` |
+| You `register` a second handler for the same class name | `HandlerAlreadyRegisteredError` at start-up, not a silent overwrite |
+| The handler throws | The same error reaches the caller, unchanged, after every behavior has seen it |
+
+## The request context: who is asking
+
+The second argument to `send` is the **request context**. It travels to every behavior. It has four
+fields:
+
+| Field | What it is for |
+|---|---|
+| `actor` | Who is making the request: a user id, a service name. Required. `AuditBehavior` records it. |
+| `correlationId` | An id you choose (often one per HTTP request) so the audit row can be matched to your logs. |
+| `audit` | Extra key/values for this one send's audit row, such as how the request arrived (`{ via: 'assistant-chat' }`). They can add to what the command reports but never overwrite it. |
+| `secrets` | Values that must never appear in the audit row, wherever they turn up: a key someone typed into a form, say. Each is replaced with `[REDACTED]`. |
+
+```ts
+await mediator.send(new MarkInvoicePaid('inv-204', new Date()), {
+  actor: 'omar',
+  correlationId: crypto.randomUUID(),
+  audit: { via: 'bulk-import', batch: '2026-11' }
+});
+```
+
+Handlers do not receive the context. If a handler needs to know who is asking (to filter a list to the
+caller's own records, say) put that on the request: `new ListInvoices({ ownerId: session.userId })`.
+The context is for the pipeline; the request is for the handler.
+
+## Should a Query ever change anything?
+
+No. If reading has a side effect that matters (marking a message as read, counting a download) it is a
+Command that happens to return data. Keeping Queries pure is what lets an AI assistant run them
+without asking anyone, and lets you cache or retry them without thinking. See
+[the agentic interface](agentic-interface.md).
+
+## Where next
+
+- [Behaviors](behaviors.md): locking, auditing and logging for every request.
+- [The HTTP envelope](http.md): turning results and errors into JSON responses.
+
+---
+
+<!-- docs/behaviors.md -->
+
+# Behaviors
+
+A **behavior** is a step that wraps every request on its way to the handler and on its way back. It is
+where you put the rules that would otherwise be copied into every endpoint: take a lock, write an audit
+record, log a line, check a permission. Other frameworks call the same idea middleware.
+
+![The request pipeline: send passes through each behavior, outermost first, reaches the one handler, and the result travels back out through the same behaviors in reverse.](images/pipeline.svg)
+
+Behaviors run in the order you list them, outermost first. With `[mutex, audit, logging]`, a request
+passes through the lock, then the audit step, then the logger, reaches the handler, and the result
+travels back out through the logger, the audit step and the lock.
+
+```ts
+import { AuditBehavior, createMediator, LoggingBehavior, MutexBehavior } from '@garkpit/mediator';
+
+// Build stateful behaviors once, where the app starts, and reuse them.
+const mutex = new MutexBehavior();
+const audit = new AuditBehavior({
+  appendEntry: async (entry) => console.log('audit', entry.action, entry.outcome),
+  mapError: () => ({ code: 'INTERNAL' })
+});
+
+export const mediator = createMediator({ behaviors: [mutex, audit, new LoggingBehavior()] });
+```
+
+**The order is a decision.** With the lock outermost, a command that is refused because the lock is
+held never reaches the audit step, so a refusal leaves no audit row. Put `audit` first if you want
+refused attempts recorded as failures.
+
+## MutexBehavior: one at a time
+
+A mutex (short for mutual exclusion) is a lock. `MutexBehavior` makes sure two commands that name the
+same key never run at once. A command opts in by having a `mutexKey()` method:
+
+```ts
+import { Command, type HasMutexKey } from '@garkpit/mediator';
+
+// One key: only one rename per note at a time. Renames of different notes run side by side.
+export class RenameNote extends Command<void> implements HasMutexKey {
+  constructor(readonly id: string, readonly title: string) {
+    super();
+  }
+  mutexKey() {
+    return `note:${this.id}`;
+  }
+}
+
+// Several keys: all taken together, or none.
+export class MoveNote extends Command<void> implements HasMutexKey {
+  constructor(readonly noteId: string, readonly fromFolder: string, readonly toFolder: string) {
+    super();
+  }
+  mutexKey() {
+    return [`note:${this.noteId}`, `folder:${this.fromFolder}`, `folder:${this.toFolder}`];
+  }
+}
+```
+
+How it behaves:
+
+- **It fails fast; it does not queue.** If a key is held, the second command is rejected at once with
+  `MutexHeldError` (its `key` property says which). The caller decides whether to retry. A web route
+  usually answers `409`.
+- **Several keys are all-or-nothing.** If any one is held, none is taken, so nothing is left half
+  locked. Keys are sorted before they are taken, which rules out two commands each waiting for the
+  other.
+- **Locks are always released,** whether the handler returns or throws.
+- **Requests without `mutexKey()` pass straight through.** Queries normally have none.
+- **The locks live in this one process.** They are a set in memory inside the `MutexBehavior` instance.
+  They do not coordinate across several servers or across restarts. Build one instance at start-up and
+  give that same instance to every mediator you create. If you run more than one server process and
+  need a lock they all respect, write a behavior that takes it from your database or Redis; the
+  interface is the same.
+
+## AuditBehavior: who did what
+
+`AuditBehavior` writes one record for every request that has an `auditInfo()` method: one row when it
+succeeds, one row when it fails. You supply the function that stores the row.
+
+```ts
+import { AuditBehavior, Command, MutexHeldError, type AuditEntry, type AuditInfo, type HasAuditInfo } from '@garkpit/mediator';
+
+export class DeleteNote extends Command<void> implements HasAuditInfo {
+  constructor(readonly id: string, readonly reason: string) {
+    super();
+  }
+  auditInfo(): AuditInfo {
+    return { action: 'note.delete', resourceId: this.id, details: { reason: this.reason } };
+  }
+}
+
+const rows: AuditEntry[] = [];
+
+export const audit = new AuditBehavior({
+  // Required: store one row. In a real app this is a database insert.
+  appendEntry: async (entry) => {
+    rows.push(entry);
+  },
+  // Required: turn any thrown error into a short code for the row.
+  mapError: (error) => ({ code: error instanceof MutexHeldError ? 'MUTEX_HELD' : 'INTERNAL' })
+});
+```
+
+Each row is an `AuditEntry`:
+
+| Field | Contents |
+|---|---|
+| `id`, `timestamp` | A fresh UUID and the ISO time the row was built |
+| `actor` | `ctx.actor`, or `'system'` when `send` was called without a context (change it with `defaultActor`) |
+| `action`, `resourceId`, `details` | What the command reported in `auditInfo()` |
+| `outcome` | `'ok'` or `'fail'` |
+| `error` | On failure: `{ code, message }`, the code from your `mapError` |
+| `commandName`, `durationMs` | The request class name and how long the handler took |
+| `correlationId` | `ctx.correlationId`, when given |
+| `schemaVersion` | `2`, so stored rows can be told apart if the shape ever changes |
+
+Things worth knowing:
+
+- **Auditing never changes the outcome.** If your `appendEntry` throws, the failure is reported (to
+  `console.error`, or to your `reportFailure`) and the command's own result or error reaches the caller
+  untouched.
+- **Secrets are redacted before the row is stored.** Any value in `details` whose *key* looks secret
+  (`token`, `password`, `api_key`, `authorization`, `cookie`, and similar) becomes `[REDACTED]`, four
+  levels deep. Pass your own `redactSecrets` to change the rule. For secret *values* under innocent
+  keys, pass them in `ctx.secrets` and they are scrubbed from the details and the error message
+  wherever they appear.
+- **`auditInfo()` is read after the handler runs.** A handler can set a field on the command first (the
+  id of the thing it just created, a snapshot of what it deleted) and the row will include it.
+- **A change that changed nothing is not recorded.** If `details.columnsPatched` is an empty array, no
+  row is written. Use it for "save" buttons pressed with nothing edited.
+- **Any request can be audited,** Queries included: give a sensitive read an `auditInfo()` and it gets
+  a row.
+
+### Your own audit fields
+
+Apps often need an extra dimension on every row: which customer account, which workspace. Extend
+`AuditInfo`, and your writer receives the command's own info next to the entry:
+
+```ts
+import { AuditBehavior, Command, type AuditInfo, type HasAuditInfo } from '@garkpit/mediator';
+
+interface WorkspaceAuditInfo extends AuditInfo {
+  workspace: string;
+}
+
+export class ArchiveProject extends Command<void> implements HasAuditInfo<WorkspaceAuditInfo> {
+  constructor(readonly workspace: string, readonly projectId: string) {
+    super();
+  }
+  auditInfo(): WorkspaceAuditInfo {
+    return { action: 'project.archive', workspace: this.workspace, resourceId: this.projectId, details: {} };
+  }
+}
+
+declare function insertAuditRow(row: object): Promise<void>;
+
+export const audit = new AuditBehavior<WorkspaceAuditInfo>({
+  appendEntry: async (entry, info) => insertAuditRow({ ...entry, workspace: info.workspace }),
+  mapError: () => ({ code: 'INTERNAL' })
+});
+```
+
+### Mirroring into a general log
+
+If you also keep one general application log, pass `appendLogEntry` and `logSource` and each audit row
+is copied into it as a `LogEntry` (the function `auditEntryToLogEntry` does the conversion, and is
+exported if you want it elsewhere).
+
+## LoggingBehavior: one line per request
+
+```ts
+import { createMediator, LoggingBehavior } from '@garkpit/mediator';
+
+// Default: console.log
+const quick = createMediator({ behaviors: [new LoggingBehavior()] });
+
+// Or send the lines wherever you like. `error` is set when the request failed.
+const lines: string[] = [];
+const collected = createMediator({
+  behaviors: [new LoggingBehavior((line, error) => lines.push(error ? `${line} ${String(error)}` : line))]
+});
+```
+
+It prints `[mediator] RenameNote ok (1.2ms)` on success and `[mediator] RenameNote FAIL (0.4ms):`
+followed by the error on failure, then passes the error on unchanged.
+
+## Writing your own
+
+A behavior is a class with one method, `invoke(request, next, ctx)`. Call `next()` to carry on down the
+pipeline. Do work before it, after it, or instead of it.
+
+**Do something around every request:**
+
+```ts
+import type { Next, PipelineBehavior, Request, RequestContext } from '@garkpit/mediator';
+
+/** Warns when any request takes longer than its budget. */
+export class SlowRequestBehavior implements PipelineBehavior {
+  constructor(private readonly budgetMs: number) {}
+
+  async invoke<TRequest extends Request<TResponse>, TResponse>(
+    request: TRequest,
+    next: Next<TResponse>,
+    ctx?: RequestContext
+  ): Promise<TResponse> {
+    const started = performance.now();
+    try {
+      return await next();
+    } finally {
+      const took = performance.now() - started;
+      if (took > this.budgetMs) {
+        console.warn(`${request.constructor.name} took ${took.toFixed(0)}ms for ${ctx?.actor ?? 'unknown'}`);
+      }
+    }
+  }
+}
+```
+
+**Stop a request before it reaches the handler.** The built-in behaviors use a small pattern you can
+copy: the request opts in with a method, and the behavior checks for that method.
+
+```ts
+import type { Next, PipelineBehavior, Request, RequestContext } from '@garkpit/mediator';
+
+/** A request that needs a role implements this. */
+export interface RequiresRole {
+  requiredRole(): string;
+}
+
+function requiresRole(request: unknown): request is RequiresRole {
+  return typeof request === 'object' && request !== null && typeof (request as RequiresRole).requiredRole === 'function';
+}
+
+export class ForbiddenError extends Error {}
+
+export class PermissionBehavior implements PipelineBehavior {
+  constructor(private readonly rolesOf: (actor: string) => Promise<readonly string[]>) {}
+
+  async invoke<TRequest extends Request<TResponse>, TResponse>(
+    request: TRequest,
+    next: Next<TResponse>,
+    ctx?: RequestContext
+  ): Promise<TResponse> {
+    if (requiresRole(request)) {
+      const roles = ctx ? await this.rolesOf(ctx.actor) : [];
+      if (!roles.includes(request.requiredRole())) {
+        throw new ForbiddenError(`${request.constructor.name} needs the "${request.requiredRole()}" role.`);
+      }
+    }
+    return next();
+  }
+}
+```
+
+Now a permission rule is one method on a command (`requiredRole() { return 'admin'; }`), it is enforced
+for every caller including AI agents, and nobody can forget to add the check to a new endpoint.
+
+Rules for behaviors:
+
+- **Write them as classes.** The mediator tells behaviors apart by class name and allows each class
+  once per mediator; a second `use` of the same class throws `BehaviorAlreadyRegisteredError`. Two
+  plain object literals would both be named `Object` and collide.
+- **Add them with `createMediator({ behaviors })` or `mediator.use(behavior)`.** Both append, so the
+  first one added is the outermost.
+- **Keep state that must outlive a request in the behavior instance,** and build that instance once.
+- **Do not swallow errors.** Let them travel back out so the behaviors around you, and the caller, see
+  them.
+
+## Where next
+
+- [The HTTP envelope](http.md): the JSON shape for results and errors.
+- [API reference](api-reference.md): every option of every behavior.
+
+---
+
+<!-- docs/http.md -->
+
+# The HTTP envelope and body limits
+
+The mediator itself knows nothing about HTTP. A separate entry point, `@garkpit/mediator/http`, has
+three small helpers for the routes that sit in front of it:
+
+- `ok` and `fail` build JSON responses in one fixed shape, so every client and every agent can tell
+  success from failure the same way.
+- `readBoundedBody` reads a request body but refuses one that is too large.
+
+They use the standard `Request` and `Response` objects, so they work in Bun, SvelteKit, Hono, Deno and
+any other runtime built on the Fetch API. They are kept out of the main entry point so a browser bundle
+never pulls them in by accident.
+
+## One shape for every response
+
+Every response is one of two JSON shapes, called the **envelope**:
+
+```json
+{ "ok": true, "data": { "id": "n1", "title": "Shopping" } }
+```
+
+```json
+{ "ok": false, "error": { "code": "NOT_FOUND", "message": "Note n404 does not exist." } }
+```
+
+```ts
+import { fail, ok } from '@garkpit/mediator/http';
+
+// 200 with {"ok":true,"data":{...}}
+const found = ok({ id: 'n1', title: 'Shopping' });
+
+// Another success status, or extra headers
+const created = ok({ id: 'n2' }, { status: 201, headers: { location: '/notes/n2' } });
+
+// The status comes from the code: NOT_FOUND is 404
+const missing = fail({ code: 'NOT_FOUND', message: 'Note n404 does not exist.' });
+
+// `details` is yours: field errors, the key that was locked, anything the client can use
+const invalid = fail({ code: 'VALIDATION_FAILED', message: 'Title is required.', details: { field: 'title' } });
+
+console.log(found.status, created.status, missing.status, invalid.status); // 200 201 404 400
+```
+
+Both set `content-type: application/json` and an exact `content-length`.
+
+### Error codes and statuses
+
+`fail` looks the status up from the error code:
+
+| Code | Status |
+|---|---|
+| `VALIDATION_FAILED` | 400 |
+| `UNAUTHORIZED` | 401 |
+| `NOT_FOUND` | 404 |
+| `CONFLICT` | 409 |
+| `MUTEX_HELD` | 409 |
+| `PRECONDITION_FAILED` | 412 |
+| `INTERNAL` | 500 |
+| `UPSTREAM_FAILED` | 502 |
+| anything else | 500 |
+
+Add your own codes by extending the table and passing it in. Or set one status directly:
+
+```ts
+import { DEFAULT_STATUS_FOR_CODE, fail, statusForCode } from '@garkpit/mediator/http';
+
+const STATUS_FOR_CODE = { ...DEFAULT_STATUS_FOR_CODE, PAYLOAD_TOO_LARGE: 413, RATE_LIMITED: 429 };
+
+const tooBig = fail({ code: 'PAYLOAD_TOO_LARGE', message: 'That file is over the 2 MB limit.' }, { table: STATUS_FOR_CODE });
+const teapot = fail({ code: 'INTERNAL', message: 'Short and stout.' }, { statusOverride: 418 });
+
+console.log(tooBig.status, teapot.status, statusForCode('RATE_LIMITED', STATUS_FOR_CODE)); // 413 418 429
+```
+
+## A complete route
+
+A route has three jobs: turn the HTTP request into a Command or Query, send it, and wrap what comes
+back. Mapping errors to codes belongs in one function that every route shares.
+
+```ts
+import { MutexHeldError } from '@garkpit/mediator';
+import { fail, ok, readBoundedBody, RequestBodyLimitError, type ApiErrorShape } from '@garkpit/mediator/http';
+
+// One place that knows how errors become codes.
+function toApiError(error: unknown): ApiErrorShape {
+  if (error instanceof ValidationError) return { code: 'VALIDATION_FAILED', message: error.message };
+  if (error instanceof NotFoundError) return { code: 'NOT_FOUND', message: error.message };
+  if (error instanceof MutexHeldError) return { code: 'MUTEX_HELD', message: 'Someone else is changing this. Try again.' };
+  if (error instanceof RequestBodyLimitError) return { code: 'VALIDATION_FAILED', message: error.message };
+  return { code: 'INTERNAL', message: 'Something went wrong.' }; // never leak internals
+}
+
+// PATCH /notes/:id
+export async function renameNoteRoute(request: Request, noteId: string, userId: string): Promise<Response> {
+  try {
+    const bytes = await readBoundedBody(request, 16 * 1024);
+    const body = JSON.parse(new TextDecoder().decode(bytes)) as { title?: unknown };
+    if (typeof body.title !== 'string' || body.title === '') throw new ValidationError('"title" must be a non-empty string.');
+
+    const note = await mediator.send(new RenameNote(noteId, body.title), { actor: userId });
+    return ok(note);
+  } catch (error) {
+    return fail(toApiError(error));
+  }
+}
+```
+
+In SvelteKit the same route is a `+server.ts` file. This is a sketch (it is not compiled by this
+repository's checks, because the library does not depend on SvelteKit):
+
+```ts nocheck
+// src/routes/api/notes/[id]/+server.ts
+import type { RequestHandler } from './$types';
+import { fail, ok, readBoundedBody } from '@garkpit/mediator/http';
+import { mediator } from '$lib/server/mediator';
+import { toApiError } from '$lib/server/errors';
+import { RenameNote } from '$lib/features/notes/rename-note/RenameNote';
+
+export const PATCH: RequestHandler = async ({ request, params, locals }) => {
+  try {
+    const bytes = await readBoundedBody(request, 16 * 1024);
+    const command = RenameNote.parse({ ...JSON.parse(new TextDecoder().decode(bytes)), id: params.id });
+    return ok(await mediator.send(command, { actor: locals.user.id }));
+  } catch (error) {
+    return fail(toApiError(error));
+  }
+};
+```
+
+## Reading a body with a limit
+
+`readBoundedBody(request, limit)` returns the body as bytes, and protects you from a client that sends
+far more than you expect:
+
+- If the request declares a `content-length` over the limit, it is refused before a single byte is
+  read.
+- If the body is streamed with no declared length, reading stops and the stream is cancelled the
+  moment it passes the limit.
+- A request with no body gives an empty array.
+
+Either refusal throws `RequestBodyLimitError`, which carries the `limit` and, when the client declared
+one, the `declared` size.
+
+```ts
+import { readBoundedBody, RequestBodyLimitError } from '@garkpit/mediator/http';
+
+const request = new Request('https://example.test/upload', { method: 'POST', body: 'x'.repeat(5000) });
+
+try {
+  await readBoundedBody(request, 1024);
+} catch (error) {
+  if (error instanceof RequestBodyLimitError) {
+    console.log(error.message, error.limit); // "Request body exceeds the 1024-byte limit." 1024
+  }
+}
+```
+
+## On the client
+
+Because the shape never varies, one small function unwraps every call:
+
+```ts
+type Envelope<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { code: string; message: string; details?: unknown } };
+
+export class ApiError extends Error {
+  constructor(readonly code: string, message: string, readonly details?: unknown) {
+    super(message);
+  }
+}
+
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init);
+  const body = (await response.json()) as Envelope<T>;
+  if (!body.ok) throw new ApiError(body.error.code, body.error.message, body.error.details);
+  return body.data;
+}
+```
+
+## Where next
+
+- [Growing an app with vertical slices](vertical-slices.md): where routes, requests and handlers live.
+- [`examples/notes`](../examples/notes/README.md): a runnable app whose routes all follow this page.
+
+---
+
+<!-- docs/vertical-slices.md -->
+
+# Growing an app with vertical slices
+
+Most codebases start tidy and get harder to change as they grow. The usual cause is not bad code. It
+is that one feature ends up spread across a routes folder, a services folder, a models folder and a
+utils folder, so every change means finding and editing four files that also serve twenty other
+features.
+
+A **vertical slice** is the opposite arrangement: one folder per feature, holding everything that
+feature needs. The mediator is what makes it practical, because a feature is then exactly one request
+class and one handler.
+
+## The layout
+
+```tree
+src/
+  app.ts                          builds the mediator and its behaviors, registers every feature
+  errors.ts                       typed errors, and the one function that maps them to error codes
+  features/
+    notes/
+      index.ts                    one registration line per slice
+      create-note/
+        CreateNote.ts             the Command: its inputs, its lock key, its audit record
+        CreateNoteHandler.ts      the only code that creates a note
+        CreateNote.test.ts        sends CreateNote through the real pipeline
+      rename-note/
+        RenameNote.ts
+        RenameNoteHandler.ts
+        RenameNote.test.ts
+      get-note/
+        GetNote.ts                a Query
+        GetNoteHandler.ts
+        GetNote.test.ts
+    billing/
+      index.ts
+      mark-invoice-paid/
+        ...
+  http/
+    routes.ts                     thin: parse, send, wrap in ok/fail
+```
+
+This is the real layout of [`examples/notes`](../examples/notes/README.md). Open any slice there and
+you will find these three files.
+
+## The three files of a slice
+
+**The request** says what the feature is, what it needs, and which shared rules apply to it.
+
+```ts
+// features/notes/rename-note/RenameNote.ts
+import { Command, type AuditInfo, type HasAuditInfo, type HasMutexKey } from '@garkpit/mediator';
+
+export interface Note {
+  id: string;
+  title: string;
+}
+
+export class RenameNote extends Command<Note> implements HasMutexKey, HasAuditInfo {
+  constructor(readonly id: string, readonly title: string) {
+    super();
+  }
+
+  mutexKey(): string {
+    return `note:${this.id}`;
+  }
+
+  auditInfo(): AuditInfo {
+    return { action: 'note.rename', resourceId: this.id, details: { title: this.title } };
+  }
+
+  /** The one place untyped input becomes a RenameNote. Routes and agent tools both call it. */
+  static parse(input: unknown): RenameNote {
+    const { id, title } = (input ?? {}) as { id?: unknown; title?: unknown };
+    if (typeof id !== 'string' || id === '') throw new Error('"id" must be a non-empty string.');
+    if (typeof title !== 'string' || title.trim() === '') throw new Error('"title" must be a non-empty string.');
+    return new RenameNote(id, title.trim());
+  }
+}
+```
+
+**The handler** does the work, and is the only place that does.
+
+```ts
+// features/notes/rename-note/RenameNoteHandler.ts
+import type { Handler } from '@garkpit/mediator';
+
+export interface NotesStore {
+  update(id: string, changes: { title: string }): Promise<Note | undefined>;
+}
+
+export class RenameNoteHandler implements Handler<RenameNote, Note> {
+  constructor(private readonly store: NotesStore) {}
+
+  async handle(command: RenameNote): Promise<Note> {
+    const note = await this.store.update(command.id, { title: command.title });
+    if (!note) throw new Error(`Note ${command.id} does not exist.`);
+    return note;
+  }
+}
+```
+
+**The test** sends the request through the real mediator, behaviors included, so it proves what a real
+caller would see.
+
+```ts nocheck
+// features/notes/rename-note/RenameNote.test.ts
+import { expect, test } from 'bun:test';
+import { createApp } from '../../../app';
+import { CreateNote } from '../create-note/CreateNote';
+import { RenameNote } from './RenameNote';
+
+test('RenameNote renames the note and audits the change', async () => {
+  const app = createApp();
+  const { id } = await app.mediator.send(new CreateNote('Draft', ''), { actor: 'priya' });
+
+  expect(await app.mediator.send(new RenameNote(id, 'Final'), { actor: 'priya' })).toMatchObject({ id, title: 'Final' });
+  expect(app.auditLog.at(-1)).toMatchObject({ action: 'note.rename', outcome: 'ok', resourceId: id });
+});
+```
+
+Registration is one line per slice, in the feature area's `index.ts`:
+
+```ts
+// features/notes/index.ts
+import type { MediatorPort } from '@garkpit/mediator';
+
+export function registerNotes(mediator: MediatorPort, store: NotesStore): void {
+  mediator.register(CreateNote, new CreateNoteHandler(store));
+  mediator.register(RenameNote, new RenameNoteHandler(store));
+  mediator.register(GetNote, new GetNoteHandler(store));
+}
+```
+
+## The rules that keep it tidy
+
+1. **Dependencies point inward.** Routes know the mediator and the request classes. Handlers know the
+   things they are given (a store, a mail sender). Nothing inner imports anything outer: a handler
+   never sees an HTTP request, and a route never touches the database.
+2. **A slice does one thing, and its name says what.** When a handler starts doing a second thing,
+   that is a second slice.
+3. **Slices do not call each other's handlers.** If two slices need the same logic, move it into a
+   plain function both import. If one feature must trigger another, the caller (a route, a job) sends
+   two requests.
+4. **Shared rules live in behaviors, never in handlers.** No handler takes a lock, writes an audit row
+   or logs its own timing.
+5. **Routes are thin.** Parse, send, wrap. If a route has an `if` about business rules, the rule
+   belongs in a handler.
+
+## What a change touches
+
+This is the point of the whole arrangement. As the app doubles in size, the cost of one change stays
+the same:
+
+| You want to | You touch |
+|---|---|
+| Add a feature | One new folder (three files), one registration line, usually one route |
+| Change how a feature works | That feature's handler and its test |
+| Find where something happens | The folder named after it |
+| Add a rule to every feature (permissions, rate limits) | One new behavior, added in one place |
+| Delete a feature | Its folder, its registration line, its route |
+| Give an AI agent access to a feature | One catalogue entry: see [the agentic interface](agentic-interface.md) |
+
+Nothing in that table grows with the number of features you already have.
+
+## Keep a list you can trust
+
+`mediator.registeredRequestTypes()` returns the name of every request that has a handler. Use it to
+keep promises about the whole app in a test, for instance "every Command is audited" or "every request
+has an entry in the assistant's tool catalogue". A test like that fails the moment someone adds a
+feature and forgets the other half.
+
+```ts
+// Every registered request has a catalogue entry, and the other way round.
+expect(catalogue.map((tool) => tool.name).sort()).toEqual([...mediator.registeredRequestTypes()]);
+```
+
+## Where next
+
+- [Working with AI coding agents](ai-coding-agents.md): why this layout suits them, and the snippet
+  that teaches them to keep it.
+- [The agentic interface](agentic-interface.md): turning the list of slices into tools.
+
+---
+
+<!-- docs/ai-coding-agents.md -->
+
+# Working with AI coding agents
+
+An AI coding agent (Claude Code, Codex, Cursor and the like) is a fast, capable programmer that starts
+every task knowing nothing about your project. It reads a few files, forms a picture, and writes code
+that fits the picture. Whether that goes well depends far more on the shape of your codebase than on
+the model.
+
+## Why a mediator helps
+
+**There is one obvious place for each thing.** Ask an agent to "let users archive a note" in a typical
+app and it has to guess: a new route file, or the existing one? Logic in the route, or a service? Which
+of the three existing patterns should it copy? Each guess is a chance to drift. In a mediator app the
+answer is always the same: a new folder with a request class, a handler and a test. The agent copies
+the folder next door.
+
+**The app can be listed.** The feature folders, and `mediator.registeredRequestTypes()`, are a complete
+inventory of what the app does. An agent can read that list in seconds instead of inferring features
+from a tangle of routes. Finding the code to change becomes a lookup, not a search.
+
+**Shared rules cannot be forgotten.** Locking, auditing, logging and permission checks live in
+behaviors that wrap every request. The agent does not need to remember to add them to a new endpoint,
+so it cannot forget.
+
+**Small files, small context.** A slice is three short files. The agent reads only those to change a
+feature, which leaves more of its working memory for the task and less for reading unrelated code.
+
+**The compiler checks the wiring.** `send` returns the type the request class declares, so a wrong
+result type or a missing field is a compile error the agent sees and fixes itself.
+
+None of this is specific to one model or tool. It is the same thing that helps a new human colleague,
+which is the point: agents do well in codebases where people do well.
+
+## The snippet for your AGENTS.md
+
+`AGENTS.md` is the file most coding agents read first in a repository (Claude Code reads `CLAUDE.md`;
+the content is the same). Paste this into yours and adjust the paths to match your project:
+
+```md
+## Features go through the mediator
+
+This app uses `@garkpit/mediator` (copied into `packages/mediator`; the full manual is
+`packages/mediator/llms-full.txt`). Every feature is one Command (it changes something) or one Query
+(it only reads), and each has exactly one handler.
+
+To add or change a feature:
+
+1. Look first. Each feature is a folder at `src/features/<area>/<verb-noun>/`. List them and reuse or
+   extend an existing one before creating a new one.
+2. A new feature is a new folder with three files. Copy the nearest existing slice and rename:
+   - `VerbNoun.ts`: the request class. It `extends Command<Result>` or `extends Query<Result>`, its
+     constructor takes typed, already-valid values, and a static `parse(input: unknown)` validates
+     untyped input.
+   - `VerbNounHandler.ts`: `implements Handler<VerbNoun, Result>`. All the logic lives here. It never
+     touches the HTTP request or response.
+   - `VerbNoun.test.ts`: sends the request through the real mediator and checks the result.
+3. Register it with one line in the area's `index.ts`:
+   `mediator.register(VerbNoun, new VerbNounHandler(deps))`.
+4. Keep routes thin: parse the input, `mediator.send(request, { actor })`, then `ok(data)` or
+   `fail(error)`. A route holds no business logic and never touches the database.
+
+Rules:
+
+- Never call a handler directly, and never call one handler from another. Send a request, or move the
+  shared code into a plain function that both handlers import.
+- Never write locking, audit or logging code in a handler. A command that must not run twice at once on
+  the same thing implements `mutexKey()`. A command that should leave a record implements
+  `auditInfo()`. The pipeline does the rest.
+- Request class names are unique across the app: the mediator finds handlers by class name.
+- Every `send` passes `{ actor }` as its second argument.
+- Handlers throw typed errors. One shared function maps errors to error codes; do not map them inside
+  a route.
+- A Query never changes anything. If it does, it is a Command.
+- Run `bun run check` before saying the work is done.
+```
+
+The same text is a file in the repository,
+[`docs/snippets/AGENTS.md`](snippets/AGENTS.md), so you can fetch it from a script.
+
+## The manual, in a form agents can read
+
+Two plain-text files follow the [llms.txt](https://llmstxt.org) convention, a simple way of giving a
+language model a project's documentation without the web page around it:
+
+- [`llms.txt`](../llms.txt): a short index of these guides with one line about each.
+- [`llms-full.txt`](../llms-full.txt): every guide joined into one file. Give an agent this and it has
+  the whole manual.
+
+Both are generated from these Markdown guides and checked on every `bun run check`, so they cannot
+fall behind. `llms-full.txt` is one of the files the [install step](getting-started.md#install-copy-it-in)
+copies into your project, which is why the snippet above can point at
+`packages/mediator/llms-full.txt`.
+
+## Prompts that work well
+
+Because features have names, you can use them:
+
+- "Add an `ArchiveNote` command next to `RenameNote`. Lock on the note. Audit it."
+- "`ListInvoices` should accept an `unpaidOnly` filter. Update the handler and its test."
+- "List every Command that has no `auditInfo()`."
+- "Write a behavior that rejects any Command whose actor is `anonymous`, and add it outermost."
+
+Each of those names a single, findable place. Compare "make archiving work", which sends the agent
+exploring.
+
+## Reviewing what an agent wrote
+
+A slice is quick to review because there are few ways for it to be wrong:
+
+- Is the new folder under the right feature area, with a request, a handler and a test?
+- Does the request class name say what happens, and is it unique?
+- Does a Command that touches shared data have a `mutexKey()`? Should it have an `auditInfo()`?
+- Is there any logic in the route that belongs in the handler?
+- Does the test send the request through the mediator, not call the handler directly?
+- Is it registered?
+
+## What this does not do
+
+It does not make a model smarter, and it will not stop an agent writing a poor handler. What it does is
+narrow where the agent has to look and where its code has to go, and that removes the most common way
+agent-written code goes wrong in a large project: a reasonable change, put in the wrong place, in a
+slightly different style from everything around it.
+
+## Where next
+
+- [The agentic interface](agentic-interface.md): letting AI agents *use* your app, not just write it.
+- [Growing an app with vertical slices](vertical-slices.md): the layout the snippet assumes.
+
+---
+
+<!-- docs/agentic-interface.md -->
+
+# The agentic interface: an app that AI can read and operate
+
+An app built on the mediator has an unusual property: everything it can do is already a list of named,
+typed requests. That is almost exactly what an AI model needs in order to use a tool: a name, a
+description and the inputs. So with a small amount of extra code the app gains two new doors beside
+its web pages:
+
+- a **chat door**: an assistant inside the app that can look things up and propose changes on a
+  person's behalf;
+- an **MCP door**: an endpoint that outside AI agents (Claude, Codex, your own) can connect to. MCP is
+  the Model Context Protocol, an open standard for giving AI applications tools to call.
+
+Both doors send the same Commands and Queries, through the same locks, audit trail and logging, as a
+button on a page does.
+
+![Three doors, one pipeline: web pages, a chat assistant and outside agents over MCP all send the same Commands and Queries through the mediator's behaviors to the handlers.](images/doors.svg)
+
+## What "self-aware" and "self-maintaining" mean here
+
+These are big words, so here is exactly what is meant by them and what is not.
+
+**Self-aware** means the app can describe what it can do. `mediator.registeredRequestTypes()` lists
+every capability by name, and a catalogue adds a sentence and an input schema for each. An agent that
+connects does not have to be told what is possible, and does not have to scrape pages to find out. It
+asks.
+
+**Self-maintaining** means agents can safely run the app's day-to-day operations, because every action
+they take goes through the one audited, locked door that people use. An agent cannot skip a permission
+check or forget the audit row, because those are not its to skip: they are in the pipeline. And when a
+coding agent adds a feature, the new Command is one catalogue entry away from being usable by every
+other agent.
+
+It does **not** mean the app rewrites itself, fixes its own bugs unattended, or needs no people. People
+still decide what gets built and confirm what gets changed.
+
+## Step 1: a tool catalogue
+
+A catalogue is a list with one entry per request: its class, a description a model can read, and a
+schema for its inputs. Each entry builds its request with the same `parse` function the HTTP route
+uses, so there is one set of validation rules, not two.
+
+```ts
+import { Command as BaseCommand, type Request as MediatorRequest } from '@garkpit/mediator';
+
+export interface Tool {
+  /** The request class name: the same string the mediator keys handlers by. */
+  name: string;
+  /** Queries only read. Commands change something. */
+  kind: 'query' | 'command';
+  description: string;
+  /** A JSON Schema for the input object. */
+  inputSchema: { type: 'object'; properties: Record<string, { type: string; description: string }>; required: string[] };
+  /** Untyped input in, validated request out. */
+  build(input: unknown): MediatorRequest<unknown>;
+}
+
+interface RequestClass {
+  name: string;
+  prototype: MediatorRequest<unknown>;
+  parse(input: unknown): MediatorRequest<unknown>;
+}
+
+function tool(request: RequestClass, description: string, fields: Record<string, string>): Tool {
+  return {
+    name: request.name,
+    // Taken from the class, so it cannot disagree with the code.
+    kind: request.prototype instanceof BaseCommand ? 'command' : 'query',
+    description,
+    inputSchema: {
+      type: 'object',
+      properties: Object.fromEntries(Object.entries(fields).map(([field, text]) => [field, { type: 'string', description: text }])),
+      required: Object.keys(fields)
+    },
+    build: (input) => request.parse(input)
+  };
+}
+
+export const catalogue: readonly Tool[] = [
+  tool(GetNote, 'Read one note by its id.', { id: 'The note id, for example "n1".' }),
+  tool(RenameNote, 'Change the title of an existing note.', { id: 'The note id.', title: 'The new title.' })
+];
+```
+
+## Step 2: prove nothing is missing
+
+One test keeps the catalogue honest. It fails when someone adds a feature without a tool, or leaves a
+tool behind after deleting a feature:
+
+```ts nocheck
+test('the catalogue lists exactly the requests the mediator has handlers for', () => {
+  expect(catalogue.map((tool) => tool.name).sort()).toEqual([...mediator.registeredRequestTypes()]);
+});
+```
+
+If some requests should stay private to the app, keep a short written list of exclusions and subtract
+it. The point is that leaving one out becomes a decision, not an accident.
+
+## Step 3: the chat door
+
+A chat model that supports tool calling is given the catalogue as its tools. When it calls one, the
+call arrives at a small class that applies one rule: **reads run, changes wait for a person.**
+
+```ts
+import type { MediatorPort, RequestContext } from '@garkpit/mediator';
+
+export type ToolOutcome =
+  | { status: 'done'; data: unknown }
+  | { status: 'needs-confirmation'; proposalId: string; tool: string; input: unknown };
+
+export class AssistantDoor {
+  private readonly pending = new Map<string, MediatorRequest<unknown>>();
+
+  constructor(private readonly mediator: MediatorPort) {}
+
+  /** One tool call from the model. */
+  async call(name: string, input: unknown, ctx: RequestContext): Promise<ToolOutcome> {
+    const tool = catalogue.find((t) => t.name === name);
+    if (!tool) throw new Error(`There is no tool called "${name}".`);
+    const request = tool.build(input); // validated now, before anyone is asked to confirm
+
+    if (tool.kind === 'query') {
+      return { status: 'done', data: await this.mediator.send(request, { ...ctx, audit: { via: 'assistant-chat' } }) };
+    }
+    const proposalId = crypto.randomUUID();
+    this.pending.set(proposalId, request);
+    return { status: 'needs-confirmation', proposalId, tool: name, input };
+  }
+
+  /** The person pressed Confirm. `ctx.actor` is that person. */
+  async confirm(proposalId: string, ctx: RequestContext): Promise<unknown> {
+    const request = this.pending.get(proposalId);
+    if (!request) throw new Error('That proposal does not exist or was already decided.');
+    this.pending.delete(proposalId);
+    return this.mediator.send(request, { ...ctx, audit: { via: 'assistant-chat', proposalId } });
+  }
+}
+```
+
+What this gives you:
+
+- The assistant can answer "which invoices are unpaid?" at once, because Queries change nothing.
+- When it wants to change something it shows the person exactly what it proposes ("Rename note n1 to
+  *Weekly shop*") and nothing happens until they agree.
+- The confirmed command is recorded as the person's action, with `via: 'assistant-chat'` and the
+  proposal id in the audit row's details, so you can always tell which changes arrived through the
+  assistant.
+- The command still takes its lock and passes every behavior. The assistant has no back door.
+
+The class has no model in it on purpose. Connecting one is a few lines with whichever AI provider you
+use: pass `catalogue` as the tool definitions, and route each tool call the model makes to
+`door.call(...)`.
+
+## Step 4: the MCP door
+
+For agents outside your app, MCP needs two things from a server: a list of tools and a way to call one.
+Both are short when you have a catalogue:
+
+```ts
+import type { MediatorPort, RequestContext } from '@garkpit/mediator';
+
+export function listTools() {
+  return catalogue.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: { readOnlyHint: tool.kind === 'query' } // tells the client which tools only read
+  }));
+}
+
+export async function callTool(mediator: MediatorPort, name: string, input: unknown, ctx: RequestContext) {
+  const tool = catalogue.find((t) => t.name === name);
+  if (!tool) return { content: [{ type: 'text', text: `There is no tool called "${name}".` }], isError: true };
+  try {
+    const data = await mediator.send(tool.build(input), { ...ctx, audit: { via: 'mcp' } });
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  } catch (error) {
+    return { content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }], isError: true };
+  }
+}
+```
+
+**This is a sketch of the two functions that matter, not a complete MCP server.** A real one also
+handles the protocol's handshake, its transports and, above all, authentication, and for those you
+should use the official MCP SDK for your language and call these two functions from its handlers.
+
+[`examples/notes`](../examples/notes/README.md) goes one step further so you can try it: it wraps the
+two functions in a minimal JSON-RPC handler (`src/agent/mcp.ts`), served both on standard input and
+output and at `POST /mcp`. On 22 November 2026 that example was checked against the official MCP
+TypeScript SDK client, version 1.32.2, over both transports: the client listed the four tools, created
+a note and received a clean error for a missing one. It has no authentication and no sessions, and it
+binds to your own machine only. Treat it as a demonstration.
+
+## What the library provides for this
+
+Nothing above needs a special "AI mode". These parts of the ordinary API are what make it short:
+
+| Part | Role in an agentic interface |
+|---|---|
+| `Command` and `Query` | The read/write split tells a door which calls are safe to run unasked. |
+| `registeredRequestTypes()` | The list a parity test compares the catalogue against. |
+| `RequestContext.audit` | Records how a request arrived (`via`, a proposal id) without the Command knowing or caring. |
+| `RequestContext.secrets` | Keeps a value a person typed for a tool (an API key, say) out of the audit row, whatever field it lands in. |
+| `MediatorPort` | The small interface a door depends on, so the same door code works with any mediator of that shape. |
+| Behaviors | Locks, audit and your permission rules apply to agents exactly as they apply to people. |
+
+## Before you open a door
+
+- **Decide who the actor is.** For the chat door it is the signed-in person. For MCP it is whoever the
+  connection authenticated as. Never let a caller name its own actor.
+- **Put permission checks in a behavior,** not in the door, so they hold for every way in.
+- **Keep Queries pure.** A "read" that changes something would run without confirmation.
+- **Think about what a Query can reveal.** Running unasked is fine for "list my notes" and wrong for
+  "list every customer's card details". Give sensitive reads an `auditInfo()`, a permission rule, or
+  leave them out of the catalogue.
+- **Do not expose an unauthenticated MCP endpoint beyond your own machine.**
+
+## Aires: the companion library
+
+Everything on this page you can build yourself, and the example app does it in a few hundred lines. We
+also use a fuller version of the same idea: **Aires**, our in-house companion library for apps built on
+this mediator. It generates both doors from an app's Commands and Queries: an in-app chat assistant in
+which every change is a proposal a person confirms, and an MCP endpoint for outside agents, with a
+check that fails when a feature has no matching tool.
+
+Aires is not yet public. Until it is, the pattern on this page and the code in
+[`examples/notes`](../examples/notes/README.md) are the way to get the same shape in your own app, and
+an app built this way will be ready for Aires without restructuring, because the hard part (every
+capability as a named, typed request) is already done.
+
+## Where next
+
+- [`examples/notes`](../examples/notes/README.md): run `bun run example` and watch a person, an
+  assistant and an MCP client change the same data through one pipeline.
+- [Behaviors](behaviors.md): where to put the permission rules a door relies on.
+
+---
+
+<!-- docs/api-reference.md -->
+
+# API reference
+
+Everything the library exports, grouped by what you use it for. There are two entry points:
+
+- `@garkpit/mediator`: requests, the mediator, behaviors and their types.
+- `@garkpit/mediator/http`: the JSON envelope and the bounded body reader. Kept separate so browser
+  code never pulls it in by accident.
+
+This page is checked against the source on every `bun run check`: every exported name must appear here,
+and every heading here must be a real export.
+
+## Requests and handlers
+
+### `Request`
+
+```ts nocheck
+abstract class Request<TResponse = void>
+```
+
+The base of every request. `TResponse` is the type the handler returns, and what `send` resolves to.
+You normally extend `Command` or `Query`, not this. If you import it by name alongside HTTP code,
+rename it (`import type { Request as MediatorRequest }`) so it does not hide the Fetch API's `Request`.
+
+### `Command`
+
+```ts nocheck
+abstract class Command<TResponse = void> extends Request<TResponse>
+```
+
+A request that changes something. The result type defaults to `void`.
+
+### `Query`
+
+```ts nocheck
+abstract class Query<TResponse> extends Request<TResponse>
+```
+
+A request that only reads. The result type is required.
+
+### `Handler`
+
+```ts nocheck
+interface Handler<TRequest extends Request<TResponse>, TResponse> {
+  handle(request: TRequest): Promise<TResponse>;
+}
+```
+
+The code that carries out one kind of request. Any object with a matching `handle` method will do.
+
+### `RequestConstructor`
+
+```ts nocheck
+type RequestConstructor<T extends Request<unknown>> = new (...args: never[]) => T;
+```
+
+The type of a request class itself, as taken by `register`.
+
+### `RequestContext`
+
+```ts nocheck
+interface RequestContext {
+  actor: string;
+  readonly correlationId?: string;
+  readonly audit?: Readonly<Record<string, unknown>>;
+  readonly secrets?: readonly string[];
+}
+```
+
+Who is asking, passed as the second argument of `send` and handed to every behavior.
+
+| Field | Meaning |
+|---|---|
+| `actor` | Who is making the request. `AuditBehavior` records it. |
+| `correlationId` | Your id for tying the audit row to other logs. |
+| `audit` | Extra key/values merged into this send's audit `details`. They never overwrite a key the command itself reports. |
+| `secrets` | Strings that must not appear anywhere in this send's audit row. Each is replaced with `[REDACTED]` in the details (keys and values) and in the error message. Empty strings are ignored. |
+
+## The mediator
+
+### `createMediator`
+
+```ts nocheck
+function createMediator(options?: CreateMediatorOptions): Mediator
+```
+
+Builds a `Mediator` and installs `options.behaviors` in order, outermost first. It holds no state of its
+own: build stateful behaviors once and pass the same instances in.
+
+### `CreateMediatorOptions`
+
+```ts nocheck
+interface CreateMediatorOptions {
+  behaviors?: readonly PipelineBehavior[];
+}
+```
+
+### `Mediator`
+
+```ts nocheck
+class Mediator implements MediatorPort {
+  register(ctor, handler, options?: RegisterOptions): void;
+  use(behavior: PipelineBehavior, options?: RegisterOptions): void;
+  send<TResponse>(request: Request<TResponse>, ctx?: RequestContext): Promise<TResponse>;
+  registeredRequestTypes(): readonly string[];
+}
+```
+
+| Method | What it does |
+|---|---|
+| `register(ctor, handler, options?)` | Registers the one handler for a request class, keyed by the class name. A second registration for the same name throws `HandlerAlreadyRegisteredError` unless `options.allowReplace` is true. |
+| `use(behavior, options?)` | Appends a behavior to the pipeline (the first added is outermost). Each behavior class may be used once; a second throws `BehaviorAlreadyRegisteredError` unless `allowReplace` is true, in which case the new instance takes the old one's place in the order. |
+| `send(request, ctx?)` | Runs the request through every behavior to its handler and returns the handler's result. Throws `HandlerNotRegisteredError` if no handler is registered. A handler's error reaches the caller unchanged. |
+| `registeredRequestTypes()` | The names of every request class with a handler, sorted, as a new array each call. |
+
+### `RegisterOptions`
+
+```ts nocheck
+interface RegisterOptions {
+  allowReplace?: boolean;
+}
+```
+
+`allowReplace: true` lets a registration replace an existing one of the same name. It exists for
+development servers that re-run registration code on hot reload. Leave it off in production.
+
+### `MediatorPort`
+
+```ts nocheck
+interface MediatorPort {
+  register(ctor, handler, options?: RegisterOptions): void;
+  registeredRequestTypes(): readonly string[];
+  send<TResponse>(request: Request<TResponse>, ctx?: RequestContext): Promise<TResponse>;
+}
+```
+
+The three methods a library needs from a host app's mediator. Depend on this type (not on the
+`Mediator` class) in code that should work with any mediator of the same shape. `Mediator` implements
+it.
+
+### `HandlerNotRegisteredError`
+
+Thrown by `send` when no handler is registered for the request's class name. `requestName` holds the
+name.
+
+### `HandlerAlreadyRegisteredError`
+
+Thrown by `register` on a duplicate class name. `requestName` holds the name.
+
+### `BehaviorAlreadyRegisteredError`
+
+Thrown by `use` when a behavior of the same class is already installed. `behaviorName` holds the name.
+
+## The pipeline
+
+### `PipelineBehavior`
+
+```ts nocheck
+interface PipelineBehavior {
+  invoke<TRequest extends Request<TResponse>, TResponse>(
+    request: TRequest,
+    next: Next<TResponse>,
+    ctx?: RequestContext
+  ): Promise<TResponse>;
+}
+```
+
+A step that wraps every request. Call `next()` to continue; return or throw without calling it to stop
+the request before the handler.
+
+### `Next`
+
+```ts nocheck
+type Next<TResponse> = () => Promise<TResponse>;
+```
+
+The rest of the pipeline, as seen from inside a behavior.
+
+## Locking
+
+### `MutexBehavior`
+
+```ts nocheck
+class MutexBehavior implements PipelineBehavior
+```
+
+Takes the keys a request declares with `mutexKey()` for the length of the request. All keys are taken
+together or none; a held key throws `MutexHeldError` at once; keys are released on every exit. Locks
+are held in memory, per instance, per process. No constructor arguments.
+
+### `HasMutexKey`
+
+```ts nocheck
+interface HasMutexKey {
+  mutexKey(): string | readonly string[];
+}
+```
+
+Implemented by a request that needs a lock. Return one key or several.
+
+### `isMutexed`
+
+```ts nocheck
+function isMutexed(req: unknown): req is HasMutexKey
+```
+
+True when the value has a `mutexKey` method.
+
+### `MutexHeldError`
+
+Thrown when a key is already held. `key` holds the key.
+
+## Auditing
+
+### `AuditBehavior`
+
+```ts nocheck
+class AuditBehavior<TInfo extends AuditInfo = AuditInfo> implements PipelineBehavior {
+  constructor(options: AuditBehaviorOptions<TInfo>);
+}
+```
+
+Writes one `AuditEntry` for each request that implements `HasAuditInfo`: outcome `'ok'` when the
+handler returns, `'fail'` when it throws (the error is then rethrown unchanged). `auditInfo()` is read
+after the handler has run. A request whose `details.columnsPatched` is an empty array is not recorded.
+
+### `AuditBehaviorOptions`
+
+| Option | Type | Meaning |
+|---|---|---|
+| `appendEntry` | `AuditWriter<TInfo>` | Required. Stores one row. Receives `(entry, info)`. |
+| `mapError` | `AuditErrorMapper` | Required. Turns a thrown error into `{ code }` for the row. |
+| `appendLogEntry` | `AuditLogWriter<TInfo>` | Optional. Also copies each row into a general log as a `LogEntry`. Needs `logSource`. |
+| `logSource` | `string` | The `source` value for mirrored log entries. |
+| `redactSecrets` | `SecretsRedactor` | Replaces the default redaction of `details`. |
+| `defaultActor` | `string` | The actor recorded when `send` had no context. Default `'system'`. |
+| `reportFailure` | `AuditFailureReporter` | Called when a writer throws. Default `console.error`. |
+
+### `AuditWriter`
+
+```ts nocheck
+type AuditWriter<TInfo extends AuditInfo = AuditInfo> = (entry: AuditEntry, info: TInfo) => Promise<void>;
+```
+
+### `AuditLogWriter`
+
+```ts nocheck
+type AuditLogWriter<TInfo extends AuditInfo = AuditInfo> = (entry: LogEntry, info: TInfo) => Promise<void>;
+```
+
+### `AuditErrorMapper`
+
+```ts nocheck
+type AuditErrorMapper = (error: unknown) => { code: string };
+```
+
+### `SecretsRedactor`
+
+```ts nocheck
+type SecretsRedactor = (input: Record<string, unknown>) => Record<string, unknown>;
+```
+
+### `AuditFailureReporter`
+
+```ts nocheck
+type AuditFailureReporter = (message: string, context: Record<string, unknown>) => void;
+```
+
+### `AuditInfo`
+
+```ts nocheck
+interface AuditInfo {
+  action: string;
+  resourceId?: string;
+  details: Record<string, unknown>;
+}
+```
+
+What a request reports about itself. Extend it to add your own fields and read them in your writer.
+
+### `HasAuditInfo`
+
+```ts nocheck
+interface HasAuditInfo<TInfo extends AuditInfo = AuditInfo> {
+  auditInfo(): TInfo;
+}
+```
+
+### `isAuditable`
+
+```ts nocheck
+function isAuditable(req: unknown): req is HasAuditInfo
+```
+
+True when the value has an `auditInfo` method.
+
+### `AuditEntry`
+
+```ts nocheck
+interface AuditEntry {
+  schemaVersion: 2;
+  id: string;
+  timestamp: string;
+  actor: string;
+  action: string;
+  outcome: AuditOutcome;
+  details: Record<string, unknown>;
+  error?: { code: string; message: string };
+  correlationId?: string;
+  commandName?: string;
+  durationMs?: number;
+  resourceId?: string;
+}
+```
+
+The row `AuditBehavior` builds and hands to your writer.
+
+### `AuditOutcome`
+
+```ts nocheck
+type AuditOutcome = 'ok' | 'fail' | 'denied';
+```
+
+`AuditBehavior` writes `'ok'` and `'fail'`. `'denied'` is there for rows your own code writes, for
+example from a permission behavior.
+
+### `auditEntryToLogEntry`
+
+```ts nocheck
+function auditEntryToLogEntry(entry: AuditEntry, source: string): LogEntry
+```
+
+Converts an audit row to the general log shape: level `info` for `ok`, `warn` otherwise; event type
+`audit`; the audit id and resource id added to `details`.
+
+### `redactSecrets`
+
+```ts nocheck
+function redactSecrets(input: Record<string, unknown>): Record<string, unknown>
+```
+
+Returns a copy in which every value under a secret-looking key is `[REDACTED]`. A key looks secret when
+it contains `token`, `secret`, `password`, `api_key` (or `apikey`, `api-key`), `authorization`,
+`cookie`, `jwt`, `bearer`, `private_key` or `signature`, in any letter case. It looks inside nested
+objects and arrays to four levels.
+
+## Logging
+
+### `LoggingBehavior`
+
+```ts nocheck
+class LoggingBehavior implements PipelineBehavior {
+  constructor(sink?: MediatorLogSink);
+}
+```
+
+One line per request: `[mediator] Name ok (1.2ms)`, or `[mediator] Name FAIL (0.4ms):` with the error,
+which is then rethrown. Writes to `console.log` unless you pass a sink.
+
+### `MediatorLogSink`
+
+```ts nocheck
+type MediatorLogSink = (line: string, error?: unknown) => void;
+```
+
+### `LogEntry`
+
+```ts nocheck
+interface LogEntry {
+  schemaVersion: 1;
+  timestamp: string;
+  level: LogLevel;
+  source: string;
+  eventType: LogEventType;
+  event: string;
+  component?: string;
+  message?: string;
+  actor?: string;
+  userId?: string;
+  requestId?: string;
+  correlationId?: string;
+  durationMs?: number;
+  outcome?: LogOutcome;
+  error?: LogErrorDetails;
+  details?: Record<string, unknown>;
+  raw?: string;
+}
+```
+
+A general-purpose log record that an audit row can be mirrored into. Nothing in the library writes one
+unless you pass `appendLogEntry`.
+
+### `LogLevel`
+
+`'debug' | 'info' | 'warn' | 'error' | 'fatal'`. The same values as a runtime array: `LOG_LEVELS`.
+
+### `LOG_LEVELS`
+
+`['debug', 'info', 'warn', 'error', 'fatal']`, read-only.
+
+### `LogEventType`
+
+`'audit' | 'error' | 'request' | 'system' | 'agent'`. The same values as a runtime array:
+`LOG_EVENT_TYPES`.
+
+### `LOG_EVENT_TYPES`
+
+`['audit', 'error', 'request', 'system', 'agent']`, read-only.
+
+### `LogOutcome`
+
+`'ok' | 'fail' | 'denied' | 'unknown'`.
+
+### `LogErrorDetails`
+
+```ts nocheck
+interface LogErrorDetails {
+  name?: string;
+  message: string;
+  code?: string;
+  stack?: string;
+}
+```
+
+## HTTP: `@garkpit/mediator/http`
+
+### `ok`
+
+```ts nocheck
+function ok<T>(data: T, init?: OkInit): Response
+```
+
+A JSON response `{"ok":true,"data":…}`. Status 200 unless `init.status` says otherwise.
+
+### `OkInit`
+
+```ts nocheck
+interface OkInit {
+  headers?: Record<string, string>;
+  status?: number;
+}
+```
+
+### `fail`
+
+```ts nocheck
+function fail<Code extends string = string>(
+  error: ApiErrorShape<Code>,
+  init?: { statusOverride?: number; table?: Record<string, number> }
+): Response
+```
+
+A JSON response `{"ok":false,"error":{…}}`. The status is `init.statusOverride` if given, otherwise
+the code looked up in `init.table`, otherwise in `DEFAULT_STATUS_FOR_CODE`.
+
+### `ApiErrorShape`
+
+```ts nocheck
+interface ApiErrorShape<Code extends string = string> {
+  code: Code;
+  message: string;
+  details?: unknown;
+}
+```
+
+### `DEFAULT_STATUS_FOR_CODE`
+
+| Code | Status |
+|---|---|
+| `VALIDATION_FAILED` | 400 |
+| `UNAUTHORIZED` | 401 |
+| `NOT_FOUND` | 404 |
+| `CONFLICT` | 409 |
+| `MUTEX_HELD` | 409 |
+| `PRECONDITION_FAILED` | 412 |
+| `INTERNAL` | 500 |
+| `UPSTREAM_FAILED` | 502 |
+
+### `statusForCode`
+
+```ts nocheck
+function statusForCode(code: string, table?: Record<string, number>): number
+```
+
+The status for a code from the table given (default `DEFAULT_STATUS_FOR_CODE`). Unknown codes give 500.
+
+### `readBoundedBody`
+
+```ts nocheck
+function readBoundedBody(request: Request, limit: number): Promise<Uint8Array<ArrayBuffer>>
+```
+
+Reads a Fetch API request body into memory, up to `limit` bytes. A declared `content-length` over the
+limit is refused before reading; a longer stream is cancelled as it passes the limit. A request with no
+body gives an empty array. Throws `RequestBodyLimitError`. (Here `Request` is the Fetch API's, not the
+mediator's.)
+
+### `RequestBodyLimitError`
+
+Thrown by `readBoundedBody`. `limit` is the limit in bytes; `declared` is the `content-length` the
+client sent when that is what was over, otherwise `null`.
+
+## Single-file entry points
+
+Each source file is also importable on its own, for code that wants one piece without the rest (the
+objects are the same ones the main entry exports):
+
+`@garkpit/mediator/Request`, `/Handler`, `/Mediator`, `/RequestContext`, `/PipelineBehavior`,
+`/HasMutexKey`, `/HasAuditInfo`, `/MutexHeldError`, `/audit-types`, `/log-types`, `/redactSecrets`,
+`/behaviors/MutexBehavior`, `/behaviors/AuditBehavior`, `/behaviors/LoggingBehavior`, `/http`.
+
+`@garkpit/mediator/Request` has no imports at all, which makes it the right entry for request classes
+shared with browser code.
+
+---
+
+<!-- docs/faq.md -->
+
+# FAQ and gotchas
+
+## Why are handlers keyed by class name?
+
+The mediator finds a handler by the request class's *name* (the string `'RenameNote'`), not by the
+class object itself. That is deliberate. In development, tools such as Vite reload a changed file by
+evaluating it again, which creates a brand-new class object with the same name. A mediator keyed by
+the object would no longer recognise requests built from the reloaded class. Keyed by name, it does.
+
+It has two consequences you need to know about, covered in the next two answers.
+
+## My production build misbehaves, but development works
+
+Your bundler is probably shortening class names. A minifier may rename `class RenameNote` to something
+like `class c`, and the mediator finds handlers by name. What happens next depends on the build:
+
+- In a single bundle, sending may still work, but every name the app reports is now nonsense: log
+  lines read `[mediator] c ok`, audit rows record `commandName: "c"`, and
+  `registeredRequestTypes()` returns `["c", "f"]`. Anything that refers to a request by its name as
+  a string (a tool catalogue, a stored audit row, a dashboard) stops matching.
+- Across bundles built separately, the same class can be given different short names, or two classes
+  the same one. Then `send` fails with "No mediator handler registered", or reaches the wrong handler.
+
+Keep class names in any bundle that runs the mediator:
+
+| Tool | Setting |
+|---|---|
+| Bun's bundler | add `--keep-names` when you use `--minify` |
+| esbuild | `keepNames: true` |
+| Terser | `keep_classnames: true` |
+| Vite | server (SSR) builds are not minified by default; leave that as it is |
+
+Or do not minify server code at all. It runs on your server; nobody downloads it.
+
+## Can two request classes have the same name?
+
+Not in one mediator. Registering the second one throws `HandlerAlreadyRegisteredError` at start-up, so
+you find out immediately. If two feature areas both want an `Archive`, name them for what they do:
+`ArchiveNote` and `ArchiveProject`. The names then read better in logs and audit rows too.
+
+## Hot reload crashes with "handler already registered"
+
+When a development server reloads a file that registers a handler, the registration line runs again on
+the same mediator. In production that would be a bug, so it throws. In development, allow it:
+
+```ts
+import { Command, createMediator, LoggingBehavior } from '@garkpit/mediator';
+
+class RenameNote extends Command<void> {}
+
+const dev = process.env.NODE_ENV !== 'production';
+const mediator = createMediator();
+
+mediator.register(RenameNote, { handle: async () => {} }, { allowReplace: dev });
+mediator.use(new LoggingBehavior(), { allowReplace: dev }); // replaced in place, order kept
+```
+
+Only ever pass `allowReplace: true` from development code. In production you want the loud failure.
+
+## Does the lock work across several servers?
+
+No. `MutexBehavior` keeps its locks in memory, inside one instance, inside one process. It stops two
+requests *in the same process* from colliding. It does nothing across two server processes, two
+containers or a restart.
+
+That is enough for an app that runs as a single process, which many do. If you run several, write your
+own behavior with the same shape that takes the lock somewhere shared (a database advisory lock, Redis),
+and use it in place of `MutexBehavior`. The commands do not change: they still just declare
+`mutexKey()`.
+
+Two related points:
+
+- Build one `MutexBehavior` at start-up and give that same instance to every mediator. Two instances
+  do not know about each other's locks.
+- The lock fails fast. A second command on a held key gets `MutexHeldError` straight away; it does not
+  wait. Retry in the caller if you want waiting.
+
+## Why did my refused command leave no audit row?
+
+Behaviors run outermost first. With `[mutex, audit, logging]`, a command refused by the lock never
+reaches the audit step. List `audit` before `mutex` if you want refusals recorded as failures.
+
+## My handler needs to know who the user is
+
+The request context (`{ actor }`) goes to behaviors, not to handlers. Put what the handler needs on
+the request itself, at the point where you build it:
+
+```ts
+import { Query } from '@garkpit/mediator';
+
+export class ListMyNotes extends Query<string[]> {
+  constructor(readonly ownerId: string) {
+    super();
+  }
+}
+
+// in the route: new ListMyNotes(session.userId)
+```
+
+This keeps handlers easy to test (no hidden inputs) and makes the request a complete description of
+what was asked.
+
+## Can I use request classes in browser code?
+
+Yes, but import them from the narrow entry point. The main entry, `@garkpit/mediator`, also exports
+`AuditBehavior`, which uses Node's `crypto` module, and you do not want that in a browser bundle. The
+base classes have an entry of their own with no imports at all:
+
+```ts
+import { Command, Query } from '@garkpit/mediator/Request';
+
+export class RenameNote extends Command<void> {
+  constructor(readonly id: string, readonly title: string) {
+    super();
+  }
+}
+
+export class GetNote extends Query<{ id: string; title: string }> {
+  constructor(readonly id: string) {
+    super();
+  }
+}
+```
+
+In the same spirit, `ok`, `fail` and `readBoundedBody` live only in `@garkpit/mediator/http`.
+
+## The library exports a class called Request. Does that clash with fetch's Request?
+
+It can. If you write `import { Request } from '@garkpit/mediator'` in a file that also handles HTTP,
+your import hides the built-in one. You rarely need the base class by name (extend `Command` or `Query`
+instead), and when you do, rename it on the way in:
+
+```ts
+import type { Request as MediatorRequest } from '@garkpit/mediator';
+
+export function describe(request: MediatorRequest<unknown>): string {
+  return request.constructor.name;
+}
+```
+
+## TypeScript cannot work out my handler's types
+
+`register` infers the request and result types from what you pass. Occasionally it needs help, most
+often when a handler for a `Command<void>` always throws or returns something unusual. Name the types
+yourself:
+
+```ts
+import { Command, createMediator } from '@garkpit/mediator';
+
+class NotBuiltYet extends Command<void> {}
+
+const mediator = createMediator();
+mediator.register<void, NotBuiltYet>(NotBuiltYet, {
+  handle: async () => {
+    throw new Error('Not built yet.');
+  }
+});
+```
+
+Writing handlers as classes that `implements Handler<TheRequest, TheResult>` avoids the question.
+
+## Should one handler send another request?
+
+Prefer not to. A handler that sends a second command through the mediator can deadlock itself on a
+lock it already holds (the second command is refused with `MutexHeldError`), and it hides a dependency
+between two features. If two features share logic, put it in a plain function. If one user action
+needs two commands, let the caller send both, or write a third command that declares every lock it
+needs up front with an array from `mutexKey()`.
+
+## Is there an npm package?
+
+No. You copy the source into your project and note the commit, as described in
+[Getting started](getting-started.md#install-copy-it-in). The library is small enough to read in one
+sitting, it has no dependencies of its own, and a copy cannot change underneath you.
+
+## How stable is it? Who supports it?
+
+It is a small personal project shared as it is, under the MIT licence: no warranty, no support, and no
+promise that versions stay compatible. Because you hold your own copy, nothing changes for you until
+you choose to take a newer one. Read the [changelog](../CHANGELOG.md) before you do.
+
+## What does it not do?
+
+- No dependency injection container. Pass a handler what it needs through its constructor.
+- No events or publish/subscribe. One request, one handler.
+- No validation library. Parse input however you like before building a request.
+- No retries, queues or scheduling.
+- No distributed locking (see above).
+
+Each of those is a deliberate omission. The library is the dispatch, the pipeline and the envelope, and
+it aims to stay small enough that you, and a coding agent, can hold all of it in mind.
+
+---
+
+<!-- docs/snippets/AGENTS.md -->
+
+# The AGENTS.md snippet
+
+## Features go through the mediator
+
+This app uses `@garkpit/mediator` (copied into `packages/mediator`; the full manual is
+`packages/mediator/llms-full.txt`). Every feature is one Command (it changes something) or one Query
+(it only reads), and each has exactly one handler.
+
+To add or change a feature:
+
+1. Look first. Each feature is a folder at `src/features/<area>/<verb-noun>/`. List them and reuse or
+   extend an existing one before creating a new one.
+2. A new feature is a new folder with three files. Copy the nearest existing slice and rename:
+   - `VerbNoun.ts`: the request class. It `extends Command<Result>` or `extends Query<Result>`, its
+     constructor takes typed, already-valid values, and a static `parse(input: unknown)` validates
+     untyped input.
+   - `VerbNounHandler.ts`: `implements Handler<VerbNoun, Result>`. All the logic lives here. It never
+     touches the HTTP request or response.
+   - `VerbNoun.test.ts`: sends the request through the real mediator and checks the result.
+3. Register it with one line in the area's `index.ts`:
+   `mediator.register(VerbNoun, new VerbNounHandler(deps))`.
+4. Keep routes thin: parse the input, `mediator.send(request, { actor })`, then `ok(data)` or
+   `fail(error)`. A route holds no business logic and never touches the database.
+
+Rules:
+
+- Never call a handler directly, and never call one handler from another. Send a request, or move the
+  shared code into a plain function that both handlers import.
+- Never write locking, audit or logging code in a handler. A command that must not run twice at once on
+  the same thing implements `mutexKey()`. A command that should leave a record implements
+  `auditInfo()`. The pipeline does the rest.
+- Request class names are unique across the app: the mediator finds handlers by class name.
+- Every `send` passes `{ actor }` as its second argument.
+- Handlers throw typed errors. One shared function maps errors to error codes; do not map them inside
+  a route.
+- A Query never changes anything. If it does, it is a Command.
+- Run `bun run check` before saying the work is done.
